@@ -76,7 +76,7 @@ export function DrawCover() {
             </div>
           </div>
           <div className={`cover-canvas ${loading ? "is-making" : ""}`} inert={loading}>
-            <DrawingCanvas />
+            <DrawingCanvas layout="cover" />
           </div>
           <button className="go-button" type="button" onClick={() => void go()} disabled={drawing.isEmpty || loading}>GO</button>
           {loading && <div className="making-status" role="status"><LoaderCircle size={15} className="spin" /> Turning your lines into a record<span className="loading-dots">...</span></div>}

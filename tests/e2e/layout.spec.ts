@@ -20,7 +20,7 @@ const bitmap = (page: Page) =>
 for (const s of SIZES) {
   test(`layout at ${s.name} has no horizontal overflow and a usable canvas`, async ({ page }) => {
     await page.setViewportSize({ width: s.width, height: s.height });
-    await page.goto("/");
+    await page.goto("/drawsound");
     await page.waitForLoadState("networkidle");
     const overflow = await page.evaluate(
       () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
@@ -40,7 +40,7 @@ for (const s of SIZES) {
 
 test("resizing keeps the drawing and the canvas stays drawable", async ({ page }) => {
   await page.setViewportSize({ width: 1400, height: 900 });
-  await page.goto("/");
+  await page.goto("/drawsound");
   await page.waitForLoadState("networkidle");
   await drawDot(page);
   const before = await bitmap(page);

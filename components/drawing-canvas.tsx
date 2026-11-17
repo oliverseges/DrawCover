@@ -25,7 +25,7 @@ function strokePath(ctx: CanvasRenderingContext2D, pts: Point[]) {
   ctx.stroke();
 }
 
-export function DrawingCanvas() {
+export function DrawingCanvas({ layout = "workspace" }: { layout?: "workspace" | "cover" }) {
   const baseRef = useRef<HTMLCanvasElement>(null);
   const overlayRef = useRef<HTMLCanvasElement>(null);
   const cursorRef = useRef<HTMLDivElement>(null);
@@ -168,12 +168,12 @@ export function DrawingCanvas() {
   const showBrushCursor = tool === "brush" || tool === "eraser";
 
   return (
-    <div className="flex aspect-[4/3] max-h-[70dvh] min-h-0 w-full items-center justify-center [container-type:size] lg:aspect-auto lg:max-h-none lg:h-full">
+    <div className={layout === "cover" ? "w-full" : "flex aspect-[4/3] max-h-[70dvh] min-h-0 w-full items-center justify-center [container-type:size] lg:aspect-auto lg:max-h-none lg:h-full"}>
     <div
       className="relative overflow-hidden rounded-lg border bg-white shadow-sm"
       style={{
         aspectRatio: `${CANVAS_WIDTH} / ${CANVAS_HEIGHT}`,
-        width: `min(100cqw, calc(100cqh * ${CANVAS_WIDTH / CANVAS_HEIGHT}))`,
+        width: layout === "cover" ? "100%" : `min(100cqw, calc(100cqh * ${CANVAS_WIDTH / CANVAS_HEIGHT}))`,
       }}
     >
       <canvas

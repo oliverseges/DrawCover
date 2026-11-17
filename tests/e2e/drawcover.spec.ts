@@ -30,6 +30,11 @@ async function draw(page: Page) {
   const go = page.getByRole("button", { name: "GO", exact: true });
   await expect(go).toBeDisabled();
   const box = (await page.getByTestId("drawing-canvas").boundingBox())!;
+  const toolbarBox = (await page.getByRole("toolbar").boundingBox())!;
+  expect(box.y).toBeGreaterThan(toolbarBox.y + toolbarBox.height);
+  expect(box.height).toBeGreaterThan(150);
+  await page.getByRole("button", { name: "Line", exact: true }).click();
+  await page.getByRole("button", { name: "Brush", exact: true }).click();
   await page.mouse.move(box.x + box.width * .3, box.y + box.height * .4);
   await page.mouse.down();
   await page.mouse.move(box.x + box.width * .7, box.y + box.height * .6, { steps: 10 });
