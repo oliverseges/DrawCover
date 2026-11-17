@@ -65,6 +65,7 @@ function IconButton({
       <Button
         variant="outline"
         size="icon"
+        className="size-11 lg:size-8"
         aria-label={label}
         onClick={onClick}
         disabled={disabled}
@@ -115,8 +116,8 @@ export function Toolbar() {
   const isShape = s.tool === "rect" || s.tool === "ellipse";
 
   return (
-    <aside className="flex w-full flex-col gap-4 rounded-lg border bg-card p-3 lg:w-64" aria-label="Drawing toolbar">
-      <div className="flex flex-col gap-2">
+    <aside className="grid grid-cols-2 gap-3 rounded-lg border bg-card p-3 lg:flex lg:min-h-0 lg:flex-col lg:gap-4 lg:overflow-y-auto" aria-label="Drawing toolbar">
+      <div className="col-span-2 flex flex-col gap-2">
         <Label>Tools</Label>
         <ToggleGroup
           value={[s.tool]}
@@ -126,7 +127,12 @@ export function Toolbar() {
         >
           {TOOLS.map((t) => (
             <Hint key={t.id} label={`${t.label} (${t.key})`}>
-              <ToggleGroupItem value={t.id} aria-label={t.label} data-testid={`tool-${t.id}`}>
+              <ToggleGroupItem
+                value={t.id}
+                aria-label={t.label}
+                data-testid={`tool-${t.id}`}
+                className="size-11 lg:size-8"
+              >
                 <t.icon />
               </ToggleGroupItem>
             </Hint>
@@ -134,7 +140,7 @@ export function Toolbar() {
         </ToggleGroup>
       </div>
 
-      <Separator />
+      <Separator className="col-span-2 hidden lg:block" />
 
       <div className="flex flex-col gap-2">
         <Label>Color</Label>
@@ -217,9 +223,9 @@ export function Toolbar() {
         </div>
       )}
 
-      <Separator />
+      <Separator className="col-span-2 hidden lg:block" />
 
-      <div className="flex flex-wrap gap-2">
+      <div className="col-span-2 flex flex-wrap gap-2">
         <IconButton label="Undo (Ctrl+Z)" icon={Undo2} onClick={() => canvasController.undo()} disabled={!s.canUndo} />
         <IconButton label="Redo (Ctrl+Y)" icon={Redo2} onClick={() => canvasController.redo()} disabled={!s.canRedo} />
         <IconButton label="Clear" icon={Trash2} onClick={() => canvasController.clear()} disabled={s.isEmpty} />

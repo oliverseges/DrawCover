@@ -38,7 +38,15 @@ async function instrument(page: Page, playMode: "ok" | "blocked" | "fail") {
   }, playMode);
 }
 
-async function mockApis(page: Page, recording: unknown) {
+let generateCalls = 0;
+test.beforeEach(() => {
+  generateCalls = 0;
+});
+
+const GEN = { phrase: "cat meow", dataUrl: "data:audio/mpeg;base64,SUQzBAAAAAAA", model: "google/lyria-3-clip-preview" };
+
+// Generation is unavailable unless a clip is given, so recording/synth tests stay deterministic.
+async function mockApis(page: Page, recording: unknown, generated: unknown = null, aiEnabled = true) {
   await page.route("**/api/recognize", (route) =>
     route.fulfill({
       json: {
@@ -51,6 +59,13 @@ async function mockApis(page: Page, recording: unknown) {
     }),
   );
   await page.route("**/api/sound**", (route) => route.fulfill({ json: { phrase: "cat meow", recording } }));
+  await page.route("**/api/sound/config", (route) => route.fulfill({ json: { aiEnabled } }));
+  await page.route("**/api/sound/generate**", (route) => {
+    generateCalls++;
+    return generated
+      ? route.fulfill({ json: generated })
+      : route.fulfill({ status: 401, json: { error: "upstream_error", message: "AI sound generation failed (HTTP 401) (the API key is invalid or expired)." } });
+  });
 }
 
 const log = (page: Page) => page.evaluate(() => (window as unknown as { __audio: string[] }).__audio);
@@ -104,4 +119,54 @@ test("falls back to synthesis when the recording fails, and clear stops audio", 
   await page.keyboard.press("Escape");
   await page.getByRole("button", { name: /^Clear/ }).click();
   await expect(page.getByTestId("sound-status")).toHaveText("Stopped");
+});
+
+test("default recognition plays the recording and never calls AI", async ({ page }) => {
+  await instrument(page, "ok");
+  await mockApis(page, REC, GEN);
+  await recognize(page);
+  await expect(page.getByTestId("sound-source")).toContainText("Real recording");
+  await page.getByRole("button", { name: "Stop sound" }).click();
+  await page.getByRole("button", { name: "Replay sound" }).click();
+  await page.getByRole("button", { name: "Synth" }).click();
+  await expect(page.getByTestId("sound-source")).toContainText("not a real recording");
+  expect(generateCalls).toBe(0);
+});
+
+test("only an explicit click generates with AI, and replay reuses the clip", async ({ page }) => {
+  await instrument(page, "ok");
+  await mockApis(page, REC, GEN);
+  await recognize(page);
+  await expect(page.getByTestId("generate-ai")).toBeEnabled();
+  await page.getByTestId("generate-ai").click();
+  await expect(page.getByTestId("sound-source")).toContainText("AI-generated audio");
+  await expect(page.getByTestId("sound-source")).toContainText("google/lyria-3-clip-preview");
+  expect(await log(page)).toContain("media-play:" + GEN.dataUrl);
+  expect(generateCalls).toBe(1);
+  await page.getByRole("button", { name: "Stop sound" }).click();
+  await page.getByRole("button", { name: "Replay sound" }).click();
+  await expect(page.getByTestId("sound-status")).toHaveText("Playing");
+  expect(generateCalls).toBe(1);
+  // A new recognition goes back to the free sources without calling AI.
+  await page.getByRole("button", { name: "What is it?" }).click();
+  await expect(page.getByTestId("sound-source")).toContainText("Real recording");
+  expect(generateCalls).toBe(1);
+});
+
+test("AI button is disabled with a setup hint when no key is configured", async ({ page }) => {
+  await instrument(page, "ok");
+  await mockApis(page, REC, GEN, false);
+  await recognize(page);
+  await expect(page.getByTestId("generate-ai")).toBeDisabled();
+  await expect(page.getByTestId("ai-setup-hint")).toContainText("OPENROUTER_API_KEY");
+  expect(generateCalls).toBe(0);
+});
+
+test("an expired key shows an error and keeps free sources playing", async ({ page }) => {
+  await instrument(page, "ok");
+  await mockApis(page, REC);
+  await recognize(page);
+  await page.getByTestId("generate-ai").click();
+  await expect(page.getByTestId("sound-note")).toContainText("invalid or expired");
+  await expect(page.getByTestId("sound-source")).toContainText("Real recording");
 });
