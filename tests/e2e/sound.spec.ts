@@ -70,7 +70,7 @@ async function mockApis(page: Page, recording: unknown, generated: unknown = nul
 
 const log = (page: Page) => page.evaluate(() => (window as unknown as { __audio: string[] }).__audio);
 async function recognize(page: Page) {
-  await page.goto("/");
+  await page.goto("/drawsound");
   await page.waitForLoadState("networkidle");
   await drawDot(page);
   await page.getByRole("button", { name: "What is it?" }).click();

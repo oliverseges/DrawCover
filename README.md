@@ -1,36 +1,50 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# DrawCover
 
-## Getting Started
+Draw something, press **GO**, and turn it into an album: a reimagined cover,
+eight related track titles, and short original music. The drawing's recognized
+subject stays behind the scenes. The original DrawSound app is at `/drawsound`.
 
-First, run the development server:
+## Run locally
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+Copy `.env.example` to `.env`, add `GEMINI_API_KEY` and `OPENROUTER_API_KEY`,
+then run:
+
+```powershell
+npm ci --legacy-peer-deps
+npm run dev -- -p 3001
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open http://localhost:3001. Keys and all provider requests stay server-side.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Generation
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- Gemini recognizes the drawing and creates album metadata. Set `GEMINI_MODEL`
+  and optionally `DRAWCOVER_METADATA_MODEL` to override the defaults.
+- `DRAWCOVER_IMAGE_MODEL` defaults to `gemini-2.5-flash-image`. It receives the
+  original drawing plus editing instructions, preserving its composition.
+  [Google's image generation guide](https://ai.google.dev/gemini-api/docs/image-generation)
+  documents image inputs and image editing for this model.
+- If image generation is unavailable, the browser creates a gradient-backed,
+  palette-colored remix of the actual drawing and clearly identifies the fallback.
+- `OPENROUTER_MUSIC_MODEL` defaults to `google/lyria-3-clip-preview` (approximately
+  30-second MP3 clips). Track 1 is generated immediately after the album appears;
+  tracks 2–8 generate only when selected, with one request at a time. Native
+  audio controls remain visible if autoplay is blocked.
+- Album and track results are cached in bounded server memory. They are not a
+  permanent library: restarts, expiry, or another server instance can invalidate
+  the album. Create another record if an album expires. No automatic provider retries.
+- Generation uses paid provider quotas; failed tracks remain individually
+  retryable and never discard the cover or tracklist.
 
-## Learn More
+## Checks
 
-To learn more about Next.js, take a look at the following resources:
+```powershell
+npm run lint
+npm run typecheck
+npm test
+npm run build
+npm run test:e2e
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Browser tests mock provider endpoints and do not spend AI credits. Set
+`E2E_BASE_URL` to reuse an existing server.

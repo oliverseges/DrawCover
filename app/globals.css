@@ -121,6 +121,104 @@
   * {
     @apply border-border outline-ring/50;
   }
+
+  .drawcover {
+    min-height: 100svh;
+    width: 100%;
+    background: #faf9f6;
+    color: #242621;
+  }
+  .drawing-room { width: min(940px, 100%); margin: 0 auto; padding: 38px 24px 24px; display: flex; flex-direction: column; align-items: center; gap: 22px; }
+  .cover-toolbar { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; align-items: center; }
+  .tool-group { display: flex; align-items: center; gap: 4px; padding: 6px; border: 1px solid #e8e7e2; border-radius: 100px; background: #fff; }
+  .tool-group button { width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; transition: background .15s; cursor: pointer; }
+  .tool-group button:hover { background: #eeeee9; }
+  .tool-group button[aria-pressed=true] { background: #242621; color: #fff; }
+  .tool-group button:disabled { opacity: .25; cursor: default; }
+  .tool-settings { padding-left: 12px; }
+  .tool-settings input[type=color] { width: 26px; height: 26px; padding: 0; border: 0; background: none; cursor: pointer; border-radius: 50%; overflow: hidden; }
+  .tool-settings input[type=range] { width: 65px; accent-color: #242621; margin: 0 8px; }
+  .cover-canvas { width: 100%; transition: opacity .6s; }
+  .cover-canvas > div { border: 1px solid #ecebe7; box-shadow: 0 8px 45px #24262105; border-radius: 2px; }
+  .cover-canvas.is-making { opacity: .45; }
+  .go-button { background: #252722; color: white; border-radius: 100px; width: 110px; height: 48px; font-size: 13px; letter-spacing: .2em; font-weight: 600; cursor: pointer; transition: transform .2s, opacity .2s; }
+  .go-button:hover:not(:disabled) { transform: translateY(-2px); }
+  .go-button:disabled { opacity: .25; cursor: default; }
+  .making-status { display: flex; gap: 8px; align-items: center; font-size: 12px; color: #6b6d65; }
+  .studio-error { font-size: 13px; color: #a33624; max-width: 500px; text-align: center; }
+  .spin { animation: studio-spin 1.4s linear infinite; }
+  @keyframes studio-spin { to { transform: rotate(360deg); } }
+  .drawcover button:focus-visible, .drawcover input:focus-visible { outline: 2px solid currentColor; outline-offset: 4px; }
+  .has-album {
+    --album-a: #253e38; --album-b: #a4b99e; --album-c: #efbd77;
+    background: radial-gradient(ellipse at 5% 30%, color-mix(in srgb, var(--album-b) 30%, transparent), transparent 60%), color-mix(in srgb, var(--album-a) 12%, #f6f3eb);
+    color: #222820;
+    animation: album-appear 1s ease both;
+  }
+  @keyframes album-appear { from { opacity: 0; } to { opacity: 1; } }
+  .album-header { max-width: 1500px; margin: auto; display: flex; justify-content: space-between; align-items: center; padding: 30px 5%; border-bottom: 1px solid #22282016; }
+  .back-button { display: flex; align-items: center; gap: 9px; font-size: 12px; cursor: pointer; }
+  .wordmark { font-weight: 800; letter-spacing: -.05em; font-size: 23px; display: flex; align-items: center; gap: 5px; }
+  .wordmark-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--album-a); margin-top: 12px; }
+  .edition, .album-footer { font-family: var(--font-geist-mono), monospace; font-size: 9px; letter-spacing: .08em; }
+  .album-room { max-width: 1400px; margin: 0 auto; padding: 65px 5% 55px; display: grid; grid-template-columns: minmax(0, 1.08fr) minmax(0, 1fr); gap: clamp(35px, 6vw, 100px); align-items: start; }
+  .art-column { padding-top: 6px; }
+  .art-frame { position: relative; background: var(--album-a); box-shadow: 0 20px 55px #22282026, 0 1px 3px #22282020; transform: rotate(-1.5deg); }
+  .album-art { display: block; width: 100%; aspect-ratio: 1; object-fit: cover; }
+  .art-sticker { position: absolute; right: 16px; bottom: 16px; width: 48px; height: 48px; background: #f7f3e5e8; color: #222820; font: 10px/1.3 var(--font-geist-mono), monospace; border-radius: 50%; display: grid; place-content: center; text-align: center; transform: rotate(12deg); }
+  .art-caption { margin-top: 25px; display: flex; justify-content: space-between; gap: 10px; font: 9px var(--font-geist-mono), monospace; letter-spacing: .08em; opacity: .65; }
+  .art-caption > span:last-child { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+  .cover-warning { margin-top: 14px; opacity: .65; font-size: 11px; line-height: 1.6; }
+  .record-kicker { font: 9px var(--font-geist-mono), monospace; letter-spacing: .08em; display: flex; align-items: center; gap: 8px; margin-bottom: 20px; }
+  .live-dot { height: 6px; width: 6px; border-radius: 50%; background: #3a6049; }
+  .record-column h1 { font-size: clamp(42px, 4.8vw, 76px); line-height: .98; font-weight: 650; letter-spacing: -.065em; max-width: 600px; text-wrap: balance; }
+  .album-subtitle { margin-top: 16px; font-size: 13px; line-height: 1.7; opacity: .66; max-width: 400px; }
+  .record-details { display: flex; align-items: center; gap: 20px; font: 8px var(--font-geist-mono), monospace; letter-spacing: .06em; margin: 26px 0 15px; }
+  .palette-swatches { display: flex; margin-left: auto; }
+  .palette-swatches i { width: 13px; height: 13px; border-radius: 50%; border: 1px solid #22282010; margin-left: -3px; }
+  .tracklist { list-style: none; padding: 0; border-top: 1px solid #22282025; }
+  .tracklist li { border-bottom: 1px solid #22282018; }
+  .track-button { display: flex; align-items: center; width: 100%; min-height: 46px; gap: 15px; cursor: pointer; text-align: left; padding: 0 10px; transition: background .2s; }
+  .track-button:hover { background: #ffffff50; }
+  .track-button:disabled { cursor: progress; }
+  .active-track { background: color-mix(in srgb, var(--album-a) 9%, transparent); }
+  .track-number { width: 20px; flex-shrink: 0; font: 10px var(--font-geist-mono), monospace; opacity: .6; display: grid; place-items: center; }
+  .track-title { font-size: 13px; font-weight: 500; }
+  .track-state { margin-left: auto; font: 8px var(--font-geist-mono), monospace; opacity: .55; flex-shrink: 0; }
+  .equalizer { display: flex; align-items: center; gap: 2px; height: 16px; }
+  .equalizer i { background: currentColor; width: 2px; height: 6px; }
+  .equalizer i:nth-child(2) { height: 15px; }
+  .equalizer i:nth-child(3) { height: 10px; }
+  .record-player { background: #ffffff4d; border: 1px solid #22282015; border-radius: 7px; padding: 15px; margin-top: 23px; }
+  .now-playing { display: flex; flex-direction: column; gap: 5px; margin-bottom: 10px; }
+  .now-playing > span { font: 8px var(--font-geist-mono), monospace; letter-spacing: .08em; opacity: .55; }
+  .now-playing strong { font-size: 12px; font-weight: 500; }
+  .record-player audio { height: 35px; width: 100%; display: block; }
+  .play-notice, .track-error { font-size: 11px; line-height: 1.5; margin-top: 8px; }
+  .track-error { color: #8c2c20; padding: 0 10px 8px; }
+  .listening-note { margin-top: 17px; font-size: 10px; line-height: 1.7; opacity: .5; }
+  .album-footer { max-width: 1500px; margin: 0 auto; padding: 22px 5%; display: flex; justify-content: space-between; gap: 15px; border-top: 1px solid #22282016; opacity: .55; }
+  @media (min-width: 1500px) { .album-room { padding-top: 85px; } }
+  @media (max-width: 760px) {
+    .drawing-room { padding: 24px 14px; gap: 20px; }
+    .cover-toolbar { gap: 6px; }
+    .tool-group { padding: 4px; gap: 1px; }
+    .tool-group button { width: 31px; height: 33px; }
+    .tool-settings input[type=range] { width: 45px; }
+    .cover-canvas { margin-top: 8vh; margin-bottom: 3vh; }
+    .album-header { padding: 23px 6%; }
+    .wordmark { font-size: 19px; }
+    .edition { display: none; }
+    .album-room { grid-template-columns: 1fr; gap: 38px; padding: 35px 7% 35px; }
+    .art-column { width: min(440px, 100%); margin: 0 auto; }
+    .record-column h1 { font-size: clamp(45px, 10vw, 68px); }
+    .record-kicker { margin-bottom: 16px; }
+    .track-button { min-height: 49px; }
+    .album-footer { font-size: 7px; padding: 20px 7%; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .drawcover *, .has-album { animation: none !important; transition: none !important; }
+  }
   body {
     @apply bg-background text-foreground;
   }

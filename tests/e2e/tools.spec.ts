@@ -42,7 +42,7 @@ async function setSlider(page: Page, name: string, value: number) {
 const isDark = (c: Rgba) => c[3] > 200 && c[0] < 60 && c[1] < 60;
 
 test.beforeEach(async ({ page }) => {
-  await page.goto("/");
+  await page.goto("/drawsound");
   await page.waitForLoadState("networkidle");
 });
 

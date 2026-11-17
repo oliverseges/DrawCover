@@ -1,5 +1,5 @@
-import { DrawApp } from "@/components/draw-app";
+import { DrawCover } from "@/components/drawcover";
 
 export default function Home() {
-  return <DrawApp />;
+  return <DrawCover />;
 }

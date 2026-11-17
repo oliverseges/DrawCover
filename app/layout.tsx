@@ -14,8 +14,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "DrawSound",
-  description: "Draw something and let Gemini guess what it is.",
+  title: "DrawCover",
+  description: "A drawing becomes a record. Eight short tracks, one original world.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

@@ -21,7 +21,7 @@ test("draws, recognizes and shows the result", async ({ page }) => {
       json: { label: "sun", confidence: 0.82, description: "A round sun.", alternatives: ["ball"] },
     });
   });
-  await page.goto("/");
+  await page.goto("/drawsound");
   const button = page.getByRole("button", { name: "What is it?" });
   await expect(button).toBeDisabled();
   await drawCircle(page);
@@ -39,14 +39,14 @@ test("shows the missing-key message", async ({ page }) => {
       json: { error: "missing_api_key", message: "The Gemini API key isn't configured." },
     }),
   );
-  await page.goto("/");
+  await page.goto("/drawsound");
   await drawCircle(page);
   await page.getByRole("button", { name: "What is it?" }).click();
   await expect(page.getByTestId("result-error")).toContainText("API key isn't configured");
 });
 
 test("undo, redo shortcuts and tool shortcuts", async ({ page }) => {
-  await page.goto("/");
+  await page.goto("/drawsound");
   await page.waitForLoadState("networkidle");
   await page.keyboard.press("e");
   await expect(page.getByTestId("tool-eraser")).toHaveAttribute("aria-pressed", "true");
