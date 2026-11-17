@@ -1,0 +1,90 @@
+{
+  "capturedAt": "2026-11-17",
+  "title": "Midnight Prowl and Velvet Purr",
+  "artist": "Vespera Nocturne",
+  "tracks": [
+    "Shadows on the Windowsill",
+    "First Light Stretch",
+    "Velvet Footsteps",
+    "Chasing Dust Motes",
+    "Curled in the Sunbeam",
+    "Rhythmic Purring",
+    "Midnight Rooftop Echoes",
+    "Dreaming of Sparrows"
+  ],
+  "models": {
+    "metadata": "gemini-3.5-flash-lite",
+    "image": "gemini-3.1-flash-image",
+    "music": "lyria-3-clip-preview"
+  },
+  "providers": {
+    "metadata": "gemini",
+    "image": "gemini",
+    "music": "gemini"
+  },
+  "genuineProviderResponses": true,
+  "generatedMusicTracks": 1,
+  "apiRequests": [
+    "album",
+    "track"
+  ],
+  "timings": [
+    {
+      "kind": "drawing-finished",
+      "secondsFromRecordingAnchor": 9.922
+    },
+    {
+      "kind": "album-request",
+      "secondsFromRecordingAnchor": 33.911
+    },
+    {
+      "kind": "album-response",
+      "status": 200,
+      "secondsFromRecordingAnchor": 46.716
+    },
+    {
+      "kind": "track-request",
+      "secondsFromRecordingAnchor": 47.593
+    },
+    {
+      "kind": "track-response",
+      "status": 200,
+      "secondsFromRecordingAnchor": 60.122
+    },
+    {
+      "kind": "play",
+      "secondsFromRecordingAnchor": 60.132
+    },
+    {
+      "kind": "pause",
+      "secondsFromRecordingAnchor": 91.947
+    },
+    {
+      "kind": "flip-back",
+      "secondsFromRecordingAnchor": 145.167
+    },
+    {
+      "kind": "play",
+      "secondsFromRecordingAnchor": 148.99
+    },
+    {
+      "kind": "pause",
+      "secondsFromRecordingAnchor": 155.044
+    },
+    {
+      "kind": "play",
+      "secondsFromRecordingAnchor": 155.808
+    },
+    {
+      "kind": "flip-front",
+      "secondsFromRecordingAnchor": 158.364
+    }
+  ],
+  "errors": [],
+  "originalTrackSeconds": 30.772167,
+  "editing": {
+    "video": "Actual app recording. Idle/generation waits cut. Drawing segment 1.6x. Generated first track added as the video soundtrack in editing, not system-audio capture.",
+    "gif": "Silent 2x overview of the edited video.",
+    "screenshots": "Same real album and cached first track. Mobile uses the actual reduced-motion 2D fallback."
+  }
+}

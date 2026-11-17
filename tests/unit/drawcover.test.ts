@@ -53,6 +53,9 @@ beforeEach(async () => {
   vi.stubEnv("DRAWCOVER_IMAGE_MODEL", "");
   vi.stubEnv("OPENROUTER_IMAGE_MODEL", "");
   vi.stubEnv("OPENROUTER_MUSIC_MODEL", "");
+  for (const name of ["DRAWCOVER_METADATA_PROVIDER", "DRAWCOVER_IMAGE_PROVIDER", "DRAWCOVER_MUSIC_PROVIDER", "DRAWCOVER_MUSIC_MODEL", "OPENROUTER_METADATA_MODEL"]) {
+    vi.stubEnv(name, "");
+  }
   recognizeDrawing.mockReset().mockResolvedValue({
     label: "private-astronaut",
     description: "An astronaut floating.",
@@ -403,9 +406,131 @@ describe("DrawCover album endpoint", () => {
 
   it("reports missing configuration without provider calls", async () => {
     vi.stubEnv("GEMINI_API_KEY", "");
+    vi.stubEnv("OPENROUTER_API_KEY", "");
     const response = await albumPost(request({ image: IMAGE }));
     expect(response.status).toBe(503);
     expect(recognizeDrawing).not.toHaveBeenCalled();
+  });
+
+  describe("DrawCover provider choices", () => {
+    const directMusic = () => Response.json({
+      steps: [
+        { type: "thought", content: [{ type: "text", text: "not audio" }] },
+        { type: "model_output", content: [{ type: "audio", mime_type: "audio/mpeg", data: MP3 }] },
+      ],
+    });
+
+    it("runs the entire album with only a direct Gemini key and caches its Lyria clip", async () => {
+      vi.stubEnv("OPENROUTER_API_KEY", "");
+      fetcher.mockImplementation(() => Promise.resolve(directMusic()));
+      const result = await album();
+      expect(result.models.music).toBe("lyria-3-clip-preview");
+      const input = { albumId: result.id, trackIndex: 0 };
+      const response = await trackPost(request(input));
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({ dataUrl: `data:audio/mpeg;base64,${MP3}`, model: "lyria-3-clip-preview" });
+      expect((await trackPost(request(input))).status).toBe(200);
+      expect(fetcher).toHaveBeenCalledTimes(1);
+      const [url, options] = fetcher.mock.calls[0];
+      expect(url).toBe("https://generativelanguage.googleapis.com/v1beta/interactions");
+      expect(options.headers).toMatchObject({ "x-goog-api-key": "private-gemini-key", "Api-Revision": "2026-05-20" });
+      expect(JSON.parse(options.body)).toMatchObject({ model: "lyria-3-clip-preview", store: false });
+      expect(JSON.parse(options.body).input).toContain("Instrumental only");
+    });
+
+    it("runs vision metadata, artwork and music with only an OpenRouter key", async () => {
+      vi.stubEnv("GEMINI_API_KEY", "");
+      fetcher.mockImplementation((_url, options) => {
+        const body = JSON.parse(options.body);
+        if (body.response_format) return Promise.resolve(Response.json({ choices: [{ message: { content: JSON.stringify(metadata()) } }] }));
+        if (body.modalities.includes("image")) return Promise.resolve(Response.json({ choices: [{ message: { images: [{ image_url: { url: IMAGE } }] } }] }));
+        return Promise.resolve(sse());
+      });
+      const result = await album();
+      expect(result.models.metadata).toBe("google/gemini-3.5-flash-lite");
+      expect(result.models.image).toBe("google/gemini-3.1-flash-image");
+      expect(result.cover.source).toBe("ai");
+      expect((await trackPost(request({ albumId: result.id, trackIndex: 0 }))).status).toBe(200);
+      expect(recognizeDrawing).not.toHaveBeenCalled();
+      expect(generateContent).not.toHaveBeenCalled();
+      expect(fetcher).toHaveBeenCalledTimes(3);
+      const payload = JSON.parse(fetcher.mock.calls[0][1].body);
+      expect(payload.messages[0].content).toContainEqual({ type: "image_url", image_url: { url: IMAGE } });
+      expect(payload.response_format.json_schema).toMatchObject({ strict: true, name: "album" });
+    });
+
+    it("honors explicit mixed choices and the direct music model override", async () => {
+      vi.stubEnv("DRAWCOVER_METADATA_PROVIDER", "openrouter");
+      vi.stubEnv("OPENROUTER_METADATA_MODEL", "custom/vision");
+      vi.stubEnv("DRAWCOVER_IMAGE_PROVIDER", "gemini");
+      vi.stubEnv("DRAWCOVER_MUSIC_PROVIDER", "gemini");
+      vi.stubEnv("DRAWCOVER_MUSIC_MODEL", "custom-direct-music");
+      fetcher.mockImplementation((url) => Promise.resolve(
+        url.includes("interactions") ? directMusic() : Response.json({ choices: [{ message: { content: JSON.stringify(metadata()) } }] }),
+      ));
+      const result = await album();
+      expect(result.models).toMatchObject({ metadata: "custom/vision", music: "custom-direct-music" });
+      expect(recognizeDrawing).not.toHaveBeenCalled();
+      expect(generateContent).toHaveBeenCalledTimes(1);
+      expect((await trackPost(request({ albumId: result.id, trackIndex: 0 }))).status).toBe(200);
+      expect(fetcher.mock.calls[1][0]).toContain("generativelanguage.googleapis.com");
+    });
+
+    it("never tries the other image provider when Gemini is explicitly selected", async () => {
+      vi.stubEnv("DRAWCOVER_IMAGE_PROVIDER", "gemini");
+      generateContent.mockImplementation(({ model }: { model: string }) =>
+        model.includes("image") ? Promise.reject(new Error("unavailable")) : Promise.resolve({ text: JSON.stringify(metadata()) }),
+      );
+      expect((await album()).cover.source).toBe("drawing");
+      expect(fetcher).not.toHaveBeenCalled();
+    });
+
+    it("can select OpenRouter artwork directly without spending a Gemini image call", async () => {
+      vi.stubEnv("DRAWCOVER_IMAGE_PROVIDER", "openrouter");
+      fetcher.mockImplementation(() => Promise.resolve(Response.json({ choices: [{ message: { images: [{ image_url: { url: IMAGE } }] } }] })));
+      expect((await album()).models.image).toBe("google/gemini-3.1-flash-image");
+      expect(generateContent).toHaveBeenCalledTimes(1);
+      expect(fetcher).toHaveBeenCalledTimes(1);
+    });
+
+    it("supports an intentional local drawing remix without an AI-failure warning", async () => {
+      vi.stubEnv("DRAWCOVER_IMAGE_PROVIDER", "drawing");
+      expect((await album()).cover).toEqual({ source: "drawing", dataUrl: null });
+      expect(generateContent).toHaveBeenCalledTimes(1);
+      expect(fetcher).not.toHaveBeenCalled();
+    });
+
+    it.each(["DRAWCOVER_METADATA_PROVIDER", "DRAWCOVER_IMAGE_PROVIDER", "DRAWCOVER_MUSIC_PROVIDER"])(
+      "rejects invalid %s before spending credits", async (name) => {
+        vi.stubEnv(name, "typo");
+        const response = await albumPost(request({ image: IMAGE }));
+        expect(response.status).toBe(503);
+        expect((await response.json()).message).toContain(name);
+        expect(generateContent).not.toHaveBeenCalled();
+        expect(fetcher).not.toHaveBeenCalled();
+      },
+    );
+
+    it("does not bypass an explicitly selected provider whose key is missing", async () => {
+      vi.stubEnv("DRAWCOVER_METADATA_PROVIDER", "gemini");
+      vi.stubEnv("GEMINI_API_KEY", "");
+      const response = await albumPost(request({ image: IMAGE }));
+      expect(response.status).toBe(503);
+      expect((await response.json()).message).toContain("GEMINI_API_KEY");
+      expect(fetcher).not.toHaveBeenCalled();
+    });
+
+    it.each(["empty", "wrong-format", "http"])("isolates direct music %s failures without another paid provider call", async (mode) => {
+      vi.stubEnv("DRAWCOVER_MUSIC_PROVIDER", "gemini");
+      const result = await album();
+      fetcher.mockImplementation(() => Promise.resolve(mode === "http" ? new Response("private", { status: 403 })
+        : Response.json({ steps: [{ type: "model_output", content: mode === "empty" ? [] : [{ type: "audio", mime_type: "audio/wav", data: MP3 }] }] })));
+      const input = { albumId: result.id, trackIndex: 0 };
+      expect((await trackPost(request(input))).status).toBe(502);
+      expect((await trackPost(request(input))).status).toBe(502);
+      expect(fetcher).toHaveBeenCalledTimes(1);
+      expect(fetcher.mock.calls[0][0]).toContain("generativelanguage.googleapis.com");
+    });
   });
 });
 
