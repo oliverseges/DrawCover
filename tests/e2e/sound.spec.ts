@@ -38,7 +38,10 @@ async function instrument(page: Page, playMode: "ok" | "blocked" | "fail") {
   }, playMode);
 }
 
-async function mockApis(page: Page, recording: unknown) {
+const GEN = { phrase: "cat meow", dataUrl: "data:audio/mpeg;base64,SUQzBAAAAAAA", model: "google/lyria-3-clip-preview" };
+
+// Generation is unavailable unless a clip is given, so recording/synth tests stay deterministic.
+async function mockApis(page: Page, recording: unknown, generated: unknown = null) {
   await page.route("**/api/recognize", (route) =>
     route.fulfill({
       json: {
@@ -51,6 +54,11 @@ async function mockApis(page: Page, recording: unknown) {
     }),
   );
   await page.route("**/api/sound**", (route) => route.fulfill({ json: { phrase: "cat meow", recording } }));
+  await page.route("**/api/sound/generate**", (route) =>
+    generated
+      ? route.fulfill({ json: generated })
+      : route.fulfill({ status: 503, json: { error: "not_configured", message: "AI sound generation is not configured." } }),
+  );
 }
 
 const log = (page: Page) => page.evaluate(() => (window as unknown as { __audio: string[] }).__audio);
@@ -104,4 +112,28 @@ test("falls back to synthesis when the recording fails, and clear stops audio", 
   await page.keyboard.press("Escape");
   await page.getByRole("button", { name: /^Clear/ }).click();
   await expect(page.getByTestId("sound-status")).toHaveText("Stopped");
+});
+
+test("Auto plays the AI-generated clip first and the selector switches sources", async ({ page }) => {
+  await instrument(page, "ok");
+  await mockApis(page, REC, GEN);
+  await recognize(page);
+  await expect(page.getByTestId("sound-status")).toHaveText("Playing");
+  await expect(page.getByTestId("sound-source")).toContainText("AI-generated audio");
+  await expect(page.getByTestId("sound-source")).toContainText("google/lyria-3-clip-preview");
+  expect(await log(page)).toContain("media-play:" + GEN.dataUrl);
+
+  await page.getByRole("radio", { name: "Recording" }).click();
+  await expect(page.getByTestId("sound-source")).toContainText("Real recording");
+  await page.getByRole("radio", { name: "Synth" }).click();
+  await expect(page.getByTestId("sound-source")).toContainText("not a real recording");
+  await expect(page.getByRole("radio", { name: "Synth" })).toHaveAttribute("aria-checked", "true");
+});
+
+test("Auto falls back from failed generation to the recording with a note", async ({ page }) => {
+  await instrument(page, "ok");
+  await mockApis(page, REC);
+  await recognize(page);
+  await expect(page.getByTestId("sound-source")).toContainText("Real recording");
+  await expect(page.getByTestId("sound-note")).toContainText("not configured");
 });
