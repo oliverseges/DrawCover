@@ -1,7 +1,9 @@
 "use client";
 
 import { useState, type CSSProperties } from "react";
-import { ArrowLeft, ArrowUpRight, Brush, Circle, Eraser, LoaderCircle, Minus, PaintBucket, Play, Redo2, Square, Trash2, Undo2 } from "lucide-react";
+import { ArrowLeft, Brush, Circle, Eraser, LoaderCircle, Minus, PaintBucket, Pause, Play, Redo2, Square, Trash2, Undo2 } from "lucide-react";
+import { AlbumAmbient, AlbumTracklist } from "@/components/album-effects";
+import { AlbumJacket } from "@/components/album-jacket";
 import { DrawingCanvas } from "@/components/drawing-canvas";
 import { useAlbumPlayer } from "@/components/use-album-player";
 import { useShortcuts } from "@/components/toolbar/use-shortcuts";
@@ -25,6 +27,7 @@ export function DrawCover() {
   const [album, setAlbum] = useState<Album | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [playing, setPlaying] = useState(false);
   const { audioRef, tracks, active, loading: trackLoading, notice, select } = useAlbumPlayer(album);
 
   async function go() {
@@ -84,28 +87,21 @@ export function DrawCover() {
         </section>
       ) : (
         <>
+          <AlbumAmbient palette={album.palette} />
           <header className="album-header">
-            <button type="button" className="back-button" onClick={() => { audioRef.current?.pause(); setAlbum(null); setError(""); }}><ArrowLeft size={16} /> New drawing</button>
+            <button type="button" className="back-button" onClick={() => { audioRef.current?.pause(); setAlbum(null); setPlaying(false); setError(""); }}><ArrowLeft size={16} /> New drawing</button>
             <span className="wordmark">DRAWCOVER<span className="wordmark-dot" /></span>
             <span className="edition">ONE DRAWING. ONE RECORD.</span>
           </header>
           <section className="album-room" aria-label="Your generated album">
-            <div className="art-column">
-              <div className="art-frame">
-                {/* Generated and local artwork are data URLs, not remote optimized images. */}
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img className="album-art" src={album.cover.dataUrl!} alt={`Album artwork for ${album.title}`} />
-                <span className="art-sticker">DC<br />001</span>
-              </div>
-              <div className="art-caption"><span>{album.cover.source === "ai" ? "YOUR LINES, REIMAGINED" : "YOUR ORIGINAL LINES, COLOR-REMIXED"}</span><span>VOL. 01 <ArrowUpRight size={12} /></span></div>
-              {album.cover.warning && <p className="cover-warning" role="status">AI artwork was unavailable. Your drawing has been color-remixed instead.</p>}
-            </div>
+            <AlbumJacket key={album.id} album={album} />
             <div className="record-column">
               <div className="record-kicker"><span className="live-dot" /> A RECORD THAT DIDN&apos;T EXIST UNTIL YOU</div>
               <h1>{album.title}</h1>
               <p className="album-subtitle">{album.subtitle}</p>
               <div className="record-details"><span>8 ORIGINAL TRACKS</span><span>~30 SECONDS EACH</span><span className="palette-swatches">{album.palette.map((color) => <i key={color} style={{ backgroundColor: color }} />)}</span></div>
-              <ol className="tracklist" aria-label="Tracklist">
+              <AlbumTracklist>
+              <ol className="tracklist" aria-label="Tracklist" data-playing={playing}>
                 {album.tracks.map((track, index) => {
                   const state = tracks[index];
                   const isActive = active === index;
@@ -116,14 +112,25 @@ export function DrawCover() {
                         <span className="track-title">{track.title}</span>
                         <span className="track-state">{state?.status === "loading" ? "MAKING" : state?.status === "error" ? "RETRY" : state?.status === "ready" ? "0:30" : <Play size={13} />}</span>
                       </button>
-                      {state?.status === "error" && <p className="track-error" role="alert">{state.message}</p>}
                     </li>
                   );
                 })}
               </ol>
-              <div className="record-player">
-                <div className="now-playing"><span>{trackLoading ? "IN THE STUDIO" : "ON THE TURNTABLE"}</span><strong>{album.tracks[active]?.title}</strong></div>
-                <audio ref={audioRef} controls preload="none" aria-label="Album audio player" onError={() => setError("Audio playback failed. Select the track again to reload it.")} />
+              </AlbumTracklist>
+              {tracks[active]?.status === "error" && <p className="track-error" role="alert">{tracks[active].message}</p>}
+              <div className="record-player glass-surface" data-playing={playing}>
+                <div className="player-heading">
+                  <div className="mini-record" aria-hidden="true"><i /></div>
+                  <div className="now-playing"><span>{trackLoading ? "IN THE STUDIO" : playing ? "NOW PLAYING" : "ON THE TURNTABLE"}</span><strong>{album.tracks[active]?.title}</strong></div>
+                  <button type="button" className="player-toggle" aria-label={playing ? "Pause track" : "Play current track"} disabled={trackLoading || tracks[active]?.status !== "ready"} onClick={() => {
+                    const audio = audioRef.current;
+                    if (!audio) return;
+                    if (!audio.paused) audio.pause();
+                    else void audio.play().catch(() => setError("Audio couldn't play. Use the player controls to try again."));
+                  }}>{trackLoading ? <LoaderCircle size={19} className="spin" /> : playing ? <Pause size={19} /> : <Play size={19} />}</button>
+                </div>
+                <div className="player-waveform" aria-hidden="true">{Array.from({ length: 36 }, (_, index) => <i key={index} style={{ "--bar-index": index, "--bar-height": `${18 + ((index * 17 + 7) % 38)}px` } as CSSProperties} />)}</div>
+                <audio ref={audioRef} controls preload="none" aria-label="Album audio player" onPlay={() => { setPlaying(true); setError(""); }} onPause={() => setPlaying(false)} onEnded={() => setPlaying(false)} onError={() => { setPlaying(false); setError("Audio playback failed. Select the track again to reload it."); }} />
                 {notice && <p className="play-notice" role="status">{notice}</p>}
                 {error && <p role="alert" className="track-error">{error}</p>}
               </div>

@@ -1,6 +1,7 @@
 export type Album = {
   id: string;
   title: string;
+  artist: string;
   subtitle: string;
   palette: [string, string, string];
   tracks: { title: string }[];

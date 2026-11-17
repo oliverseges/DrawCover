@@ -1,6 +1,6 @@
 import { drawCoverErrorResponse, generateAlbum, readDrawCoverBody } from "@/lib/drawcover-server";
 
-export const maxDuration = 120;
+export const maxDuration = 180;
 
 export async function POST(request: Request) {
   try {

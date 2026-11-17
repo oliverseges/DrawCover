@@ -18,6 +18,7 @@ const audio = `data:audio/wav;base64,${wav.toString("base64")}`;
 const album = {
   id: "test-record",
   title: "Where the Sun Sleeps",
+  artist: "The Paper Horizon",
   subtitle: "Warm analog loops and golden-hour daydreams.",
   palette: ["#344838", "#b6c798", "#f0bf74"],
   tracks: ["First Light", "Paper Horizon", "Solar Flare", "Golden Hour", "Sunroom", "Long Shadows", "Afterglow", "Until Tomorrow"].map((title) => ({ title })),
@@ -71,8 +72,9 @@ test("drawing becomes eight tracks, autoplays first, and lazily caches another",
   await expect(page.getByText("sun", { exact: true })).toHaveCount(0);
   await page.getByRole("button", { name: "GO", exact: true }).click();
   await expect(page.getByRole("heading", { name: album.title })).toBeVisible();
-  await expect(page.getByRole("img", { name: `Album artwork for ${album.title}` })).toBeVisible();
+  await expect(page.getByRole("button", { name: `Flip album artwork for ${album.title} to back cover` })).toBeVisible();
   await expect(page.getByRole("list", { name: "Tracklist" }).getByRole("listitem")).toHaveCount(8);
+  await expect(page.locator(".track-glass canvas")).toHaveCount(0);
   await expect.poll(() => page.evaluate(() => (window as unknown as { __plays: number }).__plays)).toBe(1);
   expect(requests).toEqual([0]);
   const second = page.getByRole("button", { name: "Play track 2: Paper Horizon" });
@@ -98,7 +100,7 @@ test("blocked autoplay retains visible player, track failure is isolated, fallba
   await expect(page.getByText("Your track is ready. Press play to listen.")).toBeVisible();
   await expect(page.getByLabel("Album audio player")).toHaveAttribute("controls", "");
   await expect(page.getByText(/AI artwork was unavailable/)).toBeVisible();
-  await expect(page.getByRole("img", { name: `Album artwork for ${album.title}` })).toHaveAttribute("src", /^data:image\/png;base64,/);
+  await expect(page.locator(".album-art")).toHaveAttribute("src", /^data:image\/png;base64,/);
   await page.getByRole("button", { name: "Play track 2: Paper Horizon" }).click();
   await expect(page.getByRole("alert").filter({ hasText: "Music service unavailable." })).toBeVisible();
   await expect(page.getByRole("heading", { name: album.title })).toBeVisible();
@@ -113,4 +115,103 @@ test("album failure keeps the drawing and allows a deliberate retry", async ({ p
   await expect(page.getByRole("alert").filter({ hasText: "The studio is unavailable." })).toBeVisible();
   await expect(page.getByTestId("drawing-canvas")).toBeVisible();
   await expect(page.getByRole("button", { name: "GO", exact: true })).toBeEnabled();
+});
+
+test("physical cover has title and artist, flips by keyboard and keeps playback outside", async ({ page }) => {
+  await setup(page);
+  const requested: number[] = [];
+  await page.route("**/api/drawcover/track", (route) => {
+    requested.push(route.request().postDataJSON().trackIndex);
+    return route.fulfill({ json: { dataUrl: audio, model: "mock" } });
+  });
+  await draw(page);
+  await page.getByRole("button", { name: "GO", exact: true }).click();
+  await expect(page.locator(".cover-front-title")).toHaveText(album.title);
+  await expect(page.locator(".cover-artist")).toHaveText(album.artist);
+  await expect(page.locator(".album-jacket")).toHaveAttribute("data-renderer", "three", { timeout: 20_000 });
+  await expect(page.getByRole("radio")).toHaveCount(0);
+  await expect(page.locator(".jacket-front .content-note")).toContainText("NO LYRICS REQUESTED");
+  await page.getByRole("button", { name: `Flip album artwork for ${album.title} to back cover` }).focus();
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("button", { name: `Flip album artwork for ${album.title} to front cover` })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator(".back-cover-tracks li")).toHaveCount(8);
+  await expect(page.locator(".back-cover-tracks button")).toHaveCount(0);
+  await expect(page.locator(".back-cover-imprint")).toContainText("FICTIONAL RELEASE");
+  const third = page.getByRole("button", { name: "Play track 3: Solar Flare", exact: true });
+  await expect(third).toBeEnabled();
+  await third.click();
+  await expect.poll(() => requested.includes(2)).toBe(true);
+  await page.getByRole("button", { name: `Flip album artwork for ${album.title} to front cover` }).click();
+  await expect(page.locator(".album-jacket")).toHaveAttribute("data-flipped", "false");
+});
+
+test("reduced motion bypasses GPU effects and flips without 3D motion on mobile", async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await setup(page, true);
+  await page.route("**/api/drawcover/track", (route) => route.fulfill({ json: { dataUrl: audio, model: "mock" } }));
+  await draw(page);
+  await page.getByRole("button", { name: "GO", exact: true }).click();
+  await expect(page.getByRole("heading", { name: album.title })).toBeVisible();
+  await expect(page.locator(".album-embers canvas, .cover-particles canvas, .track-glass canvas, .physical-album-canvas")).toHaveCount(0);
+  await page.getByRole("button", { name: `Flip album artwork for ${album.title} to back cover` }).click();
+  await expect(page.locator(".jacket-rotator")).toHaveCSS("transform", "none");
+  await expect(page.locator(".jacket-back")).toHaveCSS("opacity", "1");
+  await expect(page.getByRole("button", { name: "Play track 8: Until Tomorrow", exact: true })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)).toBe(false);
+  await page.getByRole("button", { name: `Flip album artwork for ${album.title} to front cover` }).focus();
+  await page.keyboard.press("Space");
+  await expect(page.locator(".album-jacket")).toHaveAttribute("data-flipped", "false");
+});
+
+test("unavailable WebGL retains static covers and decorative-only back tracklist", async ({ page }) => {
+  await page.addInitScript(() => {
+    const getContext = HTMLCanvasElement.prototype.getContext;
+    Object.defineProperty(HTMLCanvasElement.prototype, "getContext", {
+      value: function (this: HTMLCanvasElement, type: string, options?: unknown) {
+        return type.startsWith("webgl") ? null : Reflect.apply(getContext, this, [type, options]);
+      },
+    });
+
+  });
+  await setup(page, true);
+  await page.route("**/api/drawcover/track", (route) => route.fulfill({ json: { dataUrl: audio, model: "mock" } }));
+  await draw(page);
+  await page.getByRole("button", { name: "GO", exact: true }).click();
+  const jacket = page.locator(".album-jacket");
+  await expect(jacket).toHaveAttribute("data-renderer", "2d");
+  await jacket.click();
+  await expect(jacket).toHaveAttribute("data-flipped", "true");
+  await expect(page.locator(".jacket-back")).toHaveCSS("opacity", "1");
+  await expect(page.locator(".back-cover-tracks li")).toHaveCount(8);
+  await expect(page.locator(".back-cover-tracks :is(button,a,input)")).toHaveCount(0);
+});
+
+test("album fits desktop and laptop viewport heights without document scrolling", async ({ page }) => {
+  await setup(page, true);
+  await page.route("**/api/drawcover/track", (route) => route.fulfill({ json: { dataUrl: audio, model: "mock" } }));
+  await draw(page);
+  await page.getByRole("button", { name: "GO", exact: true }).click();
+  await expect(page.getByRole("heading", { name: album.title })).toBeVisible();
+  const measurements = [];
+  for (const [width, height] of [[1280, 720], [1366, 768], [1440, 900], [1920, 1080]]) {
+    await page.setViewportSize({ width, height });
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollHeight)).toBeLessThanOrEqual(height);
+    await expect(page.getByLabel("Album audio player")).toBeInViewport();
+    await expect(page.locator(".album-jacket")).toBeInViewport();
+    await page.getByRole("button", { name: "Play track 8: Until Tomorrow" }).scrollIntoViewIfNeeded();
+    const measured = await page.evaluate(() => ({
+      scrollHeight: document.documentElement.scrollHeight,
+      innerHeight: window.innerHeight,
+      overflowWidth: document.documentElement.scrollWidth > window.innerWidth,
+    }));
+    expect(measured.scrollHeight).toBeLessThanOrEqual(measured.innerHeight);
+    expect(measured.overflowWidth).toBe(false);
+    measurements.push({ width, ...measured });
+  }
+  console.log("Album viewport measurements:", JSON.stringify(measurements));
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollHeight)).toBeGreaterThan(844);
+  await page.getByLabel("Album audio player").scrollIntoViewIfNeeded();
+  await expect(page.getByLabel("Album audio player")).toBeInViewport();
 });

@@ -24,6 +24,7 @@ const IMAGE = `data:image/png;base64,${PNG}`;
 const MP3 = Buffer.from("ID3example-mp3-data").toString("base64");
 const metadata = () => ({
   title: "Velvet Constellations",
+  artist: "The Lunar Cartographers",
   subtitle: "Dreamy cosmic jazz with warm piano and brushed drums",
   palette: ["#14213D", "#FCA311", "#FFFFFF"],
   tracks: Array.from({ length: 8 }, (_, index) => ({ title: `Orbit ${index + 1}` })),
@@ -44,11 +45,13 @@ let fetcher: ReturnType<typeof vi.fn>;
 beforeEach(async () => {
   vi.resetModules();
   vi.clearAllMocks();
+  vi.spyOn(console, "warn").mockImplementation(() => {});
   vi.stubEnv("GEMINI_API_KEY", "private-gemini-key");
   vi.stubEnv("OPENROUTER_API_KEY", "private-music-key");
   vi.stubEnv("GEMINI_MODEL", "");
   vi.stubEnv("DRAWCOVER_METADATA_MODEL", "");
   vi.stubEnv("DRAWCOVER_IMAGE_MODEL", "");
+  vi.stubEnv("OPENROUTER_IMAGE_MODEL", "");
   vi.stubEnv("OPENROUTER_MUSIC_MODEL", "");
   recognizeDrawing.mockReset().mockResolvedValue({
     label: "private-astronaut",
@@ -66,6 +69,7 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
+  vi.restoreAllMocks();
   vi.useRealTimers();
   vi.unstubAllEnvs();
   vi.unstubAllGlobals();
@@ -78,6 +82,25 @@ async function album() {
 }
 
 describe("DrawCover album endpoint", () => {
+  it("tries OpenRouter image editing before drawing fallback and reports the actual image model", async () => {
+    generateContent.mockImplementation(({ model }: { model: string }) =>
+      model.includes("image")
+        ? Promise.reject(Object.assign(new Error("Gemini unavailable"), { status: 404 }))
+        : Promise.resolve({ text: JSON.stringify(metadata()) }),
+    );
+    fetcher.mockResolvedValue(Response.json({
+      choices: [{ message: { images: [{ image_url: { url: IMAGE } }] } }],
+    }));
+    const result = await album();
+    expect(result.cover).toEqual({ source: "ai", dataUrl: IMAGE });
+    expect(result.models.image).toBe("google/gemini-3.1-flash-image");
+    const payload = JSON.parse(fetcher.mock.calls[0][1].body);
+    expect(payload.messages[0].content).toContainEqual({
+      type: "image_url", image_url: { url: IMAGE },
+    });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
+
   it("recognizes privately, validates eight titles and three colors, and edits the original image", async () => {
     const response = await albumPost(request({ image: IMAGE }));
     expect(response.status).toBe(200);
@@ -89,7 +112,7 @@ describe("DrawCover album endpoint", () => {
       cover: { source: "ai", dataUrl: IMAGE },
       models: {
         metadata: "gemini-3.5-flash-lite",
-        image: "gemini-2.5-flash-image",
+        image: "gemini-3.1-flash-image",
         music: "google/lyria-3-clip-preview",
       },
     });
@@ -127,6 +150,99 @@ describe("DrawCover album endpoint", () => {
     expect((await album()).models.metadata).toBe("explicit-metadata");
   });
 
+  it("uses the configured OpenRouter model after Gemini fails and caches its successful edit", async () => {
+    vi.stubEnv("OPENROUTER_IMAGE_MODEL", "custom/router-image");
+    generateContent.mockImplementation(({ model }: { model: string }) =>
+      model.includes("image")
+        ? Promise.reject(new Error("Gemini failed"))
+        : Promise.resolve({ text: JSON.stringify(metadata()) }),
+    );
+    fetcher.mockImplementation(() => Promise.resolve(Response.json({
+      choices: [{ message: { images: [{ image_url: { url: IMAGE } }] } }],
+    })));
+    const [first, second] = await Promise.all([album(), album()]);
+    expect(first.cover).toEqual({ source: "ai", dataUrl: IMAGE });
+    expect(first.models.image).toBe("custom/router-image");
+    expect(second.id).toBe(first.id);
+    expect(JSON.parse(fetcher.mock.calls[0][1].body)).toMatchObject({
+      model: "custom/router-image",
+      modalities: ["image", "text"],
+      provider: { allow_fallbacks: false },
+      stream: false,
+    });
+    expect(fetcher.mock.calls[0][1].redirect).toBe("error");
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(generateContent).toHaveBeenCalledTimes(2);
+  });
+
+  it("only returns a generic warning after both image providers fail and logs safe actual reasons", async () => {
+    generateContent.mockImplementation(({ model }: { model: string }) =>
+      model.includes("image")
+        ? Promise.reject(Object.assign(new Error(JSON.stringify({
+          error: { code: 403, message: "Billing disabled for private-gemini-key at https://provider.example?key=private-gemini-key" },
+        })), { status: 403 }))
+        : Promise.resolve({ text: JSON.stringify(metadata()) }),
+    );
+    fetcher.mockImplementation(() => Promise.resolve(Response.json({
+      error: { message: "Credit limit for private-music-key Bearer private-token" },
+    }, { status: 402 })));
+    const first = await album();
+    expect(first.cover).toEqual({
+      dataUrl: null, source: "drawing", warning: expect.stringContaining("not AI artwork"),
+    });
+    expect(first.models.image).toBe("gemini-3.1-flash-image");
+    expect((await album()).id).toBe(first.id);
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(console.warn).toHaveBeenCalledTimes(2);
+    expect(console.warn).toHaveBeenCalledWith("[DrawCover image]", expect.objectContaining({
+      provider: "gemini", model: "gemini-3.1-flash-image", status: 403,
+      reason: expect.stringContaining("Billing disabled"),
+    }));
+    expect(console.warn).toHaveBeenCalledWith("[DrawCover image]", expect.objectContaining({
+      provider: "openrouter", model: "google/gemini-3.1-flash-image", status: 402,
+      reason: expect.stringContaining("Credit limit"),
+    }));
+    const diagnostics = JSON.stringify(vi.mocked(console.warn).mock.calls);
+    expect(diagnostics).not.toMatch(/private-gemini-key|private-music-key|private-token|https:/);
+    expect(JSON.stringify(first)).not.toMatch(/Billing disabled|Credit limit|private-/);
+  });
+
+  it("rejects remote provider image URLs instead of fetching arbitrary image locations", async () => {
+    generateContent.mockImplementation(({ model }: { model: string }) =>
+      model.includes("image")
+        ? Promise.resolve({})
+        : Promise.resolve({ text: JSON.stringify(metadata()) }),
+    );
+    fetcher.mockResolvedValue(Response.json({
+      choices: [{ message: { images: [{ image_url: { url: "https://untrusted.example/image.png" } }] } }],
+    }));
+    expect((await album()).cover.source).toBe("drawing");
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
+
+  it("bounds each image provider attempt and falls back without retries", async () => {
+    vi.useFakeTimers();
+    generateContent.mockImplementation(({ model }: { model: string }) =>
+      model.includes("image")
+        ? new Promise(() => {})
+        : Promise.resolve({ text: JSON.stringify(metadata()) }),
+    );
+    fetcher.mockReturnValue(new Promise(() => {}));
+    const pending = albumPost(request({ image: IMAGE }));
+    await vi.advanceTimersByTimeAsync(90_001);
+    const response = await pending;
+    expect(response.status).toBe(200);
+    expect((await response.json()).cover.source).toBe("drawing");
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(generateContent).toHaveBeenCalledTimes(2);
+    expect(console.warn).toHaveBeenCalledWith("[DrawCover image]", expect.objectContaining({
+      provider: "gemini", status: 504,
+    }));
+    expect(console.warn).toHaveBeenCalledWith("[DrawCover image]", expect.objectContaining({
+      provider: "openrouter", status: 504,
+    }));
+  });
+
   it.each(["error", "empty", "invalid"])("clearly marks drawing fallback on %s image output", async (mode) => {
     generateContent.mockImplementation(({ model }: { model: string }) => {
       if (!model.includes("image")) return Promise.resolve({ text: JSON.stringify(metadata()) });
@@ -153,6 +269,9 @@ describe("DrawCover album endpoint", () => {
     ["invalid color", (value: ReturnType<typeof metadata>) => { value.palette[0] = "red"; }],
     ["missing color", (value: ReturnType<typeof metadata>) => { value.palette.pop(); }],
     ["empty theme", (value: ReturnType<typeof metadata>) => { value.subtitle = ""; }],
+    ["empty artist", (value: ReturnType<typeof metadata>) => { value.artist = " "; }],
+    ["oversized artist", (value: ReturnType<typeof metadata>) => { value.artist = "x".repeat(81); }],
+    ["artist control characters", (value: ReturnType<typeof metadata>) => { value.artist = "Artist\nCredit"; }],
   ])("rejects and caches invalid metadata: %s", async (_, mutate) => {
     const value = metadata();
     mutate(value);
@@ -176,7 +295,20 @@ describe("DrawCover album endpoint", () => {
     expect(await response.json()).toEqual({
       message: "The AI service is rate limiting requests. Please try again later.",
     });
+
     expect(generateContent).toHaveBeenCalledTimes(1);
+  });
+
+  it("requires the generated artist credit and trims its validated value", async () => {
+    const missingArtist: Partial<ReturnType<typeof metadata>> = metadata();
+    delete missingArtist.artist;
+    generateContent.mockResolvedValueOnce({ text: JSON.stringify(missingArtist) });
+    expect((await albumPost(request({ image: IMAGE }))).status).toBe(502);
+    vi.stubEnv("DRAWCOVER_METADATA_MODEL", "artist-metadata");
+    generateContent.mockResolvedValueOnce({
+      text: JSON.stringify({ ...metadata(), artist: "  The Lunar Cartographers  " }),
+    });
+    expect((await album()).artist).toBe("The Lunar Cartographers");
   });
 
   it("caches recognition errors without leaking raw provider details", async () => {
@@ -296,6 +428,7 @@ describe("DrawCover lazy track endpoint", () => {
     expect(payload).toMatchObject({ model: result.models.music, modalities: ["text", "audio"], stream: true });
     expect(payload.messages[0].content).toContain("MUSIC");
     expect(payload.messages[0].content).toContain("30 seconds");
+    expect(payload.messages[0].content).toContain("Instrumental only: no lyrics, vocals, singing, speech or spoken narration.");
     expect(payload.messages[0].content).toContain("Orbit 1");
     expect(options.redirect).toBe("error");
     expect((await trackPost(request({ albumId: result.id, trackIndex: 1 }))).status).toBe(200);
