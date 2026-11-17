@@ -1,6 +1,6 @@
 import type { RecognitionResult, SoundRecording } from "@/lib/recognition";
 import { AudioBlockedError, playSynth } from "@/lib/audio/synth";
-import { useSoundStore, type SoundPreference, type SoundSource } from "@/stores/sound-store";
+import { useSoundStore, type SoundSource } from "@/stores/sound-store";
 
 const LOOKUP_TIMEOUT_MS = 8000;
 const GENERATE_TIMEOUT_MS = 30000;
@@ -8,12 +8,8 @@ const GENERATE_TIMEOUT_MS = 30000;
 type Kind = SoundSource["kind"];
 type Resolved = { source: SoundSource } | { reason: string };
 
-const CHAIN: Record<SoundPreference, Kind[]> = {
-  auto: ["generated", "recording", "synth"],
-  generated: ["generated"],
-  recording: ["recording"],
-  synth: ["synth"],
-};
+// Paid AI generation is never part of the default chain; it only runs from an explicit click.
+const DEFAULT_CHAIN: Kind[] = ["recording", "synth"];
 const LABEL: Record<Kind, string> = {
   generated: "AI-generated sound",
   recording: "Recording",
@@ -24,6 +20,7 @@ let active: { stop: () => void } | null = null;
 let token = 0;
 let current: RecognitionResult["sound"] | null = null;
 let resolved: Partial<Record<Kind, Resolved>> = {};
+let lastKind: Kind | null = null;
 
 const set = useSoundStore.setState;
 
@@ -45,11 +42,11 @@ function stopActive() {
   a?.stop();
 }
 
-async function fetchJson<T>(url: string, timeoutMs: number): Promise<{ ok: boolean; body: T | null }> {
+async function fetchJson<T>(url: string, timeoutMs: number, method = "GET"): Promise<{ ok: boolean; body: T | null }> {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
-    const res = await fetch(url, { signal: ctrl.signal });
+    const res = await fetch(url, { method, signal: ctrl.signal });
     return { ok: res.ok, body: (await res.json().catch(() => null)) as T | null };
   } catch {
     return { ok: false, body: null };
@@ -65,6 +62,7 @@ async function resolveKind(kind: Kind, sound: NonNullable<typeof current>): Prom
     const { ok, body } = await fetchJson<{ dataUrl?: string; model?: string; message?: string }>(
       `/api/sound/generate?q=${q}`,
       GENERATE_TIMEOUT_MS,
+      "POST",
     );
     if (ok && isGeneratedUrl(body?.dataUrl)) {
       return { source: { kind, url: body.dataUrl, model: body.model ?? "unknown model" } };
@@ -128,12 +126,12 @@ async function tryPlay(source: SoundSource, my: number): Promise<PlayResult> {
   }
 }
 
-/** Walks the source chain for the current preference; each failure falls through to the next source. */
-async function run(my: number, userInitiated: boolean) {
+/** Walks the given source chain; each failure falls through to the next source. */
+async function run(my: number, userInitiated: boolean, chain: Kind[]) {
   const sound = current;
   if (!sound) return;
   const notes: string[] = [];
-  for (const kind of CHAIN[useSoundStore.getState().preference]) {
+  for (const kind of chain) {
     if (token !== my) return;
     set({ status: "loading", message: null });
     resolved[kind] ??= await resolveKind(kind, sound);
@@ -150,6 +148,7 @@ async function run(my: number, userInitiated: boolean) {
     }
     const note = notes.join(" ") || null;
     if (result === "playing") {
+      lastKind = kind;
       set({ status: "playing", source: r.source, note, message: null });
       return;
     }
@@ -173,36 +172,56 @@ async function run(my: number, userInitiated: boolean) {
 }
 
 export const soundPlayer = {
-  /** Finds and plays the sound for a recognition result. Never throws. */
+  /** Finds and plays the free sound (recording, then synth) for a recognition result. Never calls AI. */
   async start(sound: RecognitionResult["sound"] | undefined) {
     const my = ++token;
     stopActive();
     resolved = {};
+    lastKind = null;
     current = sound ?? null;
     if (!sound) {
       set({ status: "idle", source: null, note: null, message: null });
       return;
     }
     set({ status: "loading", source: null, note: null, message: null });
-    await run(my, false);
+    await run(my, false, DEFAULT_CHAIN);
   },
 
-  /** Play or replay from a user gesture. */
+  /** Play or replay from a user gesture. Replaying an AI clip reuses the fetched clip (no new charge). */
   async play() {
     if (!current) return;
     const my = ++token;
     stopActive();
-    await run(my, true);
+    await run(my, true, lastKind === "generated" ? ["generated", ...DEFAULT_CHAIN] : DEFAULT_CHAIN);
   },
 
-  /** Choose the sound source; replays immediately if a result is showing. */
-  async setPreference(preference: SoundPreference) {
-    set({ preference });
+  /** Play one specific free source (recording or synth) without falling back to another. */
+  async playSource(kind: "recording" | "synth") {
     if (!current) return;
     const my = ++token;
     stopActive();
     set({ source: null, note: null });
-    await run(my, true);
+    await run(my, true, [kind]);
+  },
+
+  /** Explicit, user-clicked AI generation. If it fails the free sources are used and the error is shown. */
+  async generate() {
+    if (!current || useSoundStore.getState().aiEnabled !== true) return;
+    const my = ++token;
+    stopActive();
+    set({ source: null, note: null });
+    await run(my, true, ["generated", ...DEFAULT_CHAIN]);
+  },
+
+  /** Reads whether the server has an AI key configured (a boolean only). */
+  async loadConfig() {
+    try {
+      const res = await fetch("/api/sound/config");
+      const body = (await res.json()) as { aiEnabled?: boolean };
+      set({ aiEnabled: body.aiEnabled === true });
+    } catch {
+      set({ aiEnabled: false });
+    }
   },
 
   stop() {
@@ -216,6 +235,7 @@ export const soundPlayer = {
     stopActive();
     current = null;
     resolved = {};
+    lastKind = null;
     set({ status: "idle", source: null, note: null, message: null });
   },
 };

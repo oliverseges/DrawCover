@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { GenerationError, generateSound } from "@/lib/sound-generate";
 import { sanitizeSoundPhrase } from "@/lib/sound-presets";
 
-export async function GET(request: Request) {
+// POST so that a paid generation can only follow an explicit user action, never a prefetch or link.
+export async function POST(request: Request) {
   const phrase = sanitizeSoundPhrase(new URL(request.url).searchParams.get("q"));
   if (phrase.length < 2) {
     return NextResponse.json({ error: "invalid_query", message: "Missing sound phrase." }, { status: 400 });

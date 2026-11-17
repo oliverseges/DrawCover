@@ -80,7 +80,8 @@ async function request(phrase: string, fetcher: typeof fetch): Promise<Generated
     );
   }
   if (!res.ok) {
-    const hint = res.status === 402 || res.status === 403 ? " (credit or key limit)" : "";
+    const hint =
+      res.status === 401 ? " (the API key is invalid or expired)" : res.status === 402 || res.status === 403 ? " (credit or key limit)" : "";
     throw new GenerationError("upstream_error", `AI sound generation failed (HTTP ${res.status})${hint}.`);
   }
   let raw: string;

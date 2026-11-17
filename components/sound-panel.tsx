@@ -1,10 +1,10 @@
 "use client";
 
-import { Play, RotateCcw, Square, Volume2 } from "lucide-react";
+import { Play, RotateCcw, Sparkles, Square, Volume2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { soundPlayer } from "@/lib/audio/player";
-import { useSoundStore, type SoundPreference } from "@/stores/sound-store";
+import { useSoundStore } from "@/stores/sound-store";
 
 const STATUS_TEXT = {
   idle: "",
@@ -15,19 +15,12 @@ const STATUS_TEXT = {
   unavailable: "Audio is unavailable.",
 } as const;
 
-const OPTIONS: { value: SoundPreference; label: string }[] = [
-  { value: "auto", label: "Auto" },
-  { value: "generated", label: "AI-generated" },
-  { value: "recording", label: "Recording" },
-  { value: "synth", label: "Synth" },
-];
-
 export function SoundPanel({ phrase }: { phrase?: string }) {
   const status = useSoundStore((s) => s.status);
   const source = useSoundStore((s) => s.source);
   const note = useSoundStore((s) => s.note);
   const message = useSoundStore((s) => s.message);
-  const preference = useSoundStore((s) => s.preference);
+  const aiEnabled = useSoundStore((s) => s.aiEnabled);
   if (status === "idle") return null;
 
   const loading = status === "loading";
@@ -73,25 +66,35 @@ export function SoundPanel({ phrase }: { phrase?: string }) {
           Stop
         </Button>
       </div>
-      <div role="radiogroup" aria-label="Sound source" className="flex flex-wrap gap-1" data-testid="sound-source-select">
-        {OPTIONS.map((o) => (
-          <Button
-            key={o.value}
-            size="xs"
-            role="radio"
-            aria-checked={preference === o.value}
-            variant={preference === o.value ? "default" : "outline"}
-            onClick={() => soundPlayer.setPreference(o.value)}
-          >
-            {o.label}
-          </Button>
-        ))}
+      <div className="flex flex-wrap gap-2" role="group" aria-label="Sound source">
+        <Button size="sm" variant="outline" disabled={loading} onClick={() => soundPlayer.playSource("recording")}>
+          Recording
+        </Button>
+        <Button size="sm" variant="outline" disabled={loading} onClick={() => soundPlayer.playSource("synth")}>
+          Synth
+        </Button>
+        <Button
+          size="sm"
+          variant="secondary"
+          disabled={loading || aiEnabled !== true}
+          onClick={() => soundPlayer.generate()}
+          data-testid="generate-ai"
+          title="Generates a new clip with a paid AI model"
+        >
+          <Sparkles />
+          Generate with AI
+        </Button>
       </div>
+      {aiEnabled === false && (
+        <p className="text-xs text-muted-foreground" data-testid="ai-setup-hint">
+          AI generation is off. Add OPENROUTER_API_KEY to your local .env and restart the server.
+        </p>
+      )}
       {source && (
         <div className="flex flex-col gap-1 text-xs" data-testid="sound-source">
           {source.kind === "generated" && (
             <>
-              <Badge variant="secondary" className="w-fit">AI-generated audio</Badge>
+              <Badge variant="secondary" className="h-auto w-fit max-w-full whitespace-normal py-0.5">AI-generated audio</Badge>
               <span className="text-muted-foreground">
                 Made by {source.model} via OpenRouter. This is a music model, so it may sound musical rather
                 than a pure sound effect.
@@ -100,7 +103,7 @@ export function SoundPanel({ phrase }: { phrase?: string }) {
           )}
           {source.kind === "recording" && (
             <>
-              <Badge variant="secondary" className="w-fit">Real recording (Wikimedia Commons)</Badge>
+              <Badge variant="secondary" className="h-auto w-fit max-w-full whitespace-normal py-0.5">Real recording (Wikimedia Commons)</Badge>
               <span>
                 “{source.recording.title}” by {source.recording.credit}, {source.recording.license}.{" "}
                 <a href={source.recording.pageUrl} target="_blank" rel="noopener noreferrer" className="underline">
@@ -110,7 +113,7 @@ export function SoundPanel({ phrase }: { phrase?: string }) {
             </>
           )}
           {source.kind === "synth" && (
-            <Badge variant="outline" className="w-fit">Synthesized approximation (not a real recording)</Badge>
+            <Badge variant="outline" className="h-auto w-fit max-w-full whitespace-normal py-0.5">Synthesized approximation (not a real recording)</Badge>
           )}
           {note && <span className="text-muted-foreground" data-testid="sound-note">{note}</span>}
         </div>

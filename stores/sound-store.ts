@@ -3,7 +3,6 @@ import type { SoundRecording } from "@/lib/recognition";
 import type { SoundPreset } from "@/lib/sound-presets";
 
 export type SoundStatus = "idle" | "loading" | "playing" | "stopped" | "blocked" | "unavailable";
-export type SoundPreference = "auto" | "generated" | "recording" | "synth";
 
 export type SoundSource =
   | { kind: "generated"; url: string; model: string }
@@ -16,7 +15,8 @@ type SoundState = {
   /** Why an earlier source was skipped, or why nothing could play. */
   note: string | null;
   message: string | null;
-  preference: SoundPreference;
+  /** Whether the server has an AI key configured; null until known. */
+  aiEnabled: boolean | null;
 };
 
 export const useSoundStore = create<SoundState>(() => ({
@@ -24,5 +24,5 @@ export const useSoundStore = create<SoundState>(() => ({
   source: null,
   note: null,
   message: null,
-  preference: "auto",
+  aiEnabled: null,
 }));

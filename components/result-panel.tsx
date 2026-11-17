@@ -17,10 +17,10 @@ export function ResultPanel() {
   const loading = recognition.status === "loading";
 
   return (
-    <div className="flex w-full flex-col gap-3 lg:w-72">
+    <div className="flex min-h-0 flex-col gap-3 lg:overflow-y-auto">
       <Button
         size="lg"
-        className="h-11 text-base"
+        className="h-12 text-base lg:h-11"
         disabled={isEmpty || loading}
         onClick={() => canvasController.recognize()}
       >

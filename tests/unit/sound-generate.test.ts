@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { clearGenerationCache, generateSound, GenerationError } from "@/lib/sound-generate";
-import { GET } from "@/app/api/sound/generate/route";
+import { POST } from "@/app/api/sound/generate/route";
 
 const MP3_B64 = Buffer.from("ID3\u0004\u0000\u0000\u0000\u0000\u0000\u0000fake-mp3-bytes").toString("base64");
 const sse = (...chunks: string[]) =>
@@ -79,8 +79,8 @@ describe("generateSound", () => {
   });
 });
 
-describe("GET /api/sound/generate", () => {
-  const get = (q: string) => GET(new Request(`http://localhost/api/sound/generate?q=${q}`));
+describe("POST /api/sound/generate", () => {
+  const get = (q: string) => POST(new Request(`http://localhost/api/sound/generate?q=${q}`, { method: "POST" }));
 
   it("400 without a usable query and 503 when not configured", async () => {
     expect((await get("%21")).status).toBe(400);
