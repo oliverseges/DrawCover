@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
+import { SoundPanel } from "@/components/sound-panel";
 import { Skeleton } from "@/components/ui/skeleton";
 import { canvasController } from "@/lib/canvas/controller";
 import { useDrawingStore } from "@/stores/drawing-store";
@@ -73,6 +74,7 @@ export function ResultPanel() {
                   ))}
                 </div>
               )}
+              <SoundPanel phrase={recognition.result.sound?.phrase} />
             </div>
           )}
         </CardContent>

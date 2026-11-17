@@ -1,4 +1,5 @@
 import { exportCanvasToDataUrl, isBufferEmpty } from "@/lib/canvas/export";
+import { soundPlayer } from "@/lib/audio/player";
 import { useDrawingStore } from "@/stores/drawing-store";
 
 export const CANVAS_WIDTH = 800;
@@ -43,6 +44,7 @@ export const canvasController = {
     const c = ctx();
     if (!canvas || !c) return;
     c.clearRect(0, 0, canvas.width, canvas.height);
+    soundPlayer.stop();
     this.commit();
   },
 

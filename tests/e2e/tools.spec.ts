@@ -172,7 +172,7 @@ test("touch input draws", async ({ page, context }) => {
   const cdp = await context.newCDPSession(page);
   const a = await pt(page, 0.2, 0.5);
   const b = await pt(page, 0.8, 0.5);
-  const touch = (type: string, x: number, y: number) =>
+  const touch = (type: "touchStart" | "touchMove" | "touchEnd", x: number, y: number) =>
     cdp.send("Input.dispatchTouchEvent", { type, touchPoints: type === "touchEnd" ? [] : [{ x, y }] });
   await touch("touchStart", a.x, a.y);
   for (let i = 1; i <= 10; i++) await touch("touchMove", a.x + ((b.x - a.x) * i) / 10, a.y);
@@ -184,7 +184,7 @@ test("pen input draws", async ({ page, context }) => {
   const cdp = await context.newCDPSession(page);
   const a = await pt(page, 0.2, 0.5);
   const b = await pt(page, 0.8, 0.5);
-  const ev = (type: string, x: number, y: number, buttons: number) =>
+  const ev = (type: "mousePressed" | "mouseMoved" | "mouseReleased", x: number, y: number, buttons: number) =>
     cdp.send("Input.dispatchMouseEvent", {
       type, x, y, button: "left", buttons, pointerType: "pen", clickCount: 1, force: 0.5,
     });

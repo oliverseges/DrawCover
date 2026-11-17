@@ -38,6 +38,8 @@ describe("POST /api/recognize", () => {
         confidence: 0.9,
         description: "A cat.",
         alternatives: ["dog", "fox", "bear", "wolf"],
+        soundPhrase: "Cat meow!!",
+        soundPreset: "meow",
       }),
     });
     const res = await POST(req(good));
@@ -47,9 +49,25 @@ describe("POST /api/recognize", () => {
       confidence: 0.9,
       description: "A cat.",
       alternatives: ["dog", "fox", "bear"],
+      sound: { phrase: "cat meow", preset: "meow" },
     });
     const arg = generateContent.mock.calls[0][0];
     expect(arg.contents[0].parts[1].inlineData).toEqual({ mimeType: "image/png", data: B64 });
+  });
+
+  it("keeps an unrestricted label and falls back for a bad sound preset", async () => {
+    generateContent.mockResolvedValue({
+      text: JSON.stringify({
+        label: "unicorn",
+        confidence: 0.5,
+        description: "x",
+        alternatives: [],
+        soundPreset: "laser-cannon",
+      }),
+    });
+    const body = await (await POST(req(good))).json();
+    expect(body.label).toBe("unicorn");
+    expect(body.sound).toEqual({ phrase: "unicorn sound", preset: "tone" });
   });
 
   it("400 for invalid image", async () => {

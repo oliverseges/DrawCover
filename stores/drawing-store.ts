@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { History } from "@/lib/canvas/history";
+import { soundPlayer } from "@/lib/audio/player";
 import type { RecognitionResult } from "@/lib/recognition";
 
 export type Tool = "brush" | "eraser" | "line" | "rect" | "ellipse" | "fill";
@@ -102,6 +103,7 @@ export const useDrawingStore = create<DrawingState>((set, get) => {
     recognize: async (image) => {
       if (get().recognition.status === "loading") return;
       set({ recognition: { status: "loading" } });
+      soundPlayer.reset();
       try {
         const res = await fetch("/api/recognize", {
           method: "POST",
@@ -119,6 +121,7 @@ export const useDrawingStore = create<DrawingState>((set, get) => {
           return;
         }
         set({ recognition: { status: "success", result: body } });
+        void soundPlayer.start(body?.sound);
       } catch {
         set({
           recognition: {
