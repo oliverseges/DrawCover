@@ -158,6 +158,9 @@ test("reduced motion bypasses GPU effects and flips without 3D motion on mobile"
   await expect(page.locator(".jacket-rotator")).toHaveCSS("transform", "none");
   await expect(page.locator(".jacket-back")).toHaveCSS("opacity", "1");
   await expect(page.getByRole("button", { name: "Play track 8: Until Tomorrow", exact: true })).toBeVisible();
+  const backPrint = await page.locator(".jacket-back").boundingBox();
+  const imprint = await page.locator(".back-cover-imprint").boundingBox();
+  expect(imprint!.y + imprint!.height).toBeLessThanOrEqual(backPrint!.y + backPrint!.height);
   expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)).toBe(false);
   await page.getByRole("button", { name: `Flip album artwork for ${album.title} to front cover` }).focus();
   await page.keyboard.press("Space");
