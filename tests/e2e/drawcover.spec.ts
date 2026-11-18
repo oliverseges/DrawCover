@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { writeFile } from "node:fs/promises";
 
 declare global {
   interface Window {
@@ -209,6 +210,68 @@ for (const reducedMotion of [false, true]) {
     expect(trackCalls).toBe(1);
   });
 }
+
+test("album critic and speech keep a larger stable frame as a long review reveals", async ({ page }) => {
+  await page.setViewportSize({ width: 1460, height: 940 });
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  await setup(page, true);
+  await page.route("**/api/drawcover", route => route.fulfill({ json: {
+    ...album,
+    criticReview: {
+      criticId: "mara", basis: "concept", score: 8, headline: "A place for this sleeve.",
+      text: "Fixture concept review: warm musical ideas and an inviting sleeve. ".repeat(30),
+      preferences: "Warm folk and thoughtful sleeves.", breakdown: { direction: 3, mood: 3, palette: 2 },
+    },
+  } }));
+  await page.route("**/api/drawcover/track", route => route.fulfill({ json: { dataUrl: audio, model: "mock" } }));
+  await draw(page);
+  await page.getByRole("link", { name: "Critic mode", exact: false }).click();
+  await expect(page).toHaveURL(/\/play$/);
+  await expect(page.getByRole("heading", { name: "Mara Moss" })).toBeVisible();
+  await page.getByRole("button", { name: "PRESS RECORD", exact: true }).click();
+  const speech = page.getByRole("button", { name: "Show full critic message" });
+  await page.getByRole("button", { name: "Reveal verdict" }).waitFor();
+  await speech.waitFor();
+  const critic = page.locator(".critic-result");
+  const stage = critic.locator("canvas");
+  const before = (await stage.boundingBox())!;
+  expect(before.height).toBeGreaterThan(220);
+  const bubble = (await speech.boundingBox())!;
+  await page.getByRole("button", { name: "Reveal verdict" }).click();
+  await page.getByRole("region", { name: "Critic's review" }).waitFor();
+  const next = critic.getByRole("button", { name: "Another round", exact: true });
+  const action = (await next.boundingBox())!;
+  await speech.click();
+  await expect.poll(() => speech.evaluate(element => element.scrollTop)).toBeGreaterThan(0);
+  expect((await stage.boundingBox())!).toEqual(before);
+  expect((await speech.boundingBox())!).toEqual(bubble);
+  expect((await next.boundingBox())!).toEqual(action);
+  const column = (await critic.boundingBox())!;
+  const right = (await page.locator(".record-column").boundingBox())!;
+  expect(Math.abs(column.y - right.y)).toBeLessThan(1);
+  expect(Math.abs(column.height - right.height)).toBeLessThan(1);
+  const metrics = [{ viewport: page.viewportSize(), stage: before, speech: bubble, column, right }];
+  await page.evaluate(() => {
+    const label = document.createElement("div");
+    label.textContent = "MOCKED ALBUM / LONG REVIEW - UI EVIDENCE";
+    Object.assign(label.style, { position: "fixed", top: "0", right: "0", background: "#fff1bd", color: "#29261b", padding: "5px 10px", font: "10px monospace", zIndex: "999" });
+    document.body.append(label);
+  });
+  await page.screenshot({ path: "output/playwright/critic-fixed-stage-MOCKED-desktop.png" });
+  for (const viewport of [{ width: 1280, height: 720 }, { width: 1366, height: 768 }, { width: 1440, height: 900 }, { width: 1920, height: 1080 }, { width: 390, height: 844 }, { width: 320, height: 568 }]) {
+    await page.setViewportSize(viewport);
+    await page.waitForTimeout(750);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await next.scrollIntoViewIfNeeded();
+    await expect(next).toBeInViewport();
+    if (viewport.width >= 1000) {
+      expect(await page.evaluate(() => document.documentElement.scrollHeight)).toBe(viewport.height);
+      metrics.push({ viewport, stage: (await stage.boundingBox())!, speech: (await speech.boundingBox())!, column: (await critic.boundingBox())!, right: (await page.locator(".record-column").boundingBox())! });
+    }
+    if (viewport.width === 390) await page.screenshot({ path: "output/playwright/critic-fixed-stage-MOCKED-mobile.png", fullPage: true });
+  }
+  await writeFile("output/playwright/critic-fixed-stage-metrics.json", JSON.stringify(metrics, null, 2));
+});
 
 test("the first mode gesture unlocks non-silent babble with growing text and actual mouth movement", async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "no-preference" });

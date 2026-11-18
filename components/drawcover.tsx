@@ -132,8 +132,8 @@ export function DrawCover({ criticMode = false }: { criticMode?: boolean }) {
               <p className="critic-score"><strong>{album.criticReview.score}</strong><span>/10</span></p>
               <h2>{album.criticReview.headline}</h2>
               <details><summary>What won (or lost) them over</summary><p>{album.criticReview.preferences}</p><p>Direction {album.criticReview.breakdown.direction}/4 · Mood {album.criticReview.breakdown.mood}/3 · Palette {album.criticReview.breakdown.palette}/3</p></details>
-              <button className="critic-verdict-button" type="button" onClick={nextDrawing}>Another round</button>
             </section>}
+            {reviewShown && <button className="critic-verdict-button critic-next-round" type="button" onClick={nextDrawing}>Another round</button>}
             <small>Concept judging only. No audio listening.<br />One review included with this album.</small>
           </>}
           {voice.audioError && <p role="status">{voice.audioError}</p>}

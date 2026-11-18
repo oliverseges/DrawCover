@@ -20,6 +20,8 @@ const quietDisplay = () => matchMedia("(prefers-reduced-motion: reduce)").matche
 function SpeechLine({ text, muted, onBabble, onQuiet }: SpeechProps) {
   const instant = useSyncExternalStore(subscribe, quietDisplay, () => true);
   const [shown, setShown] = useState(0);
+  const bubble = useRef<HTMLButtonElement>(null);
+  const following = useRef(true);
   const callbacks = useRef({ onBabble, onQuiet, muted });
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
   useEffect(() => {
@@ -42,8 +44,16 @@ function SpeechLine({ text, muted, onBabble, onQuiet }: SpeechProps) {
       callbacks.current.onQuiet();
     };
   }, [text, instant]);
+  useEffect(() => {
+    if (!instant && following.current && bubble.current) {
+      bubble.current.scrollTop = bubble.current.scrollHeight;
+    }
+  }, [shown, instant]);
 
-  return <button type="button" className="critic-bubble" aria-label="Show full critic message" onClick={() => {
+  return <button ref={bubble} type="button" className="critic-bubble" aria-label="Show full critic message" onScroll={event => {
+      const element = event.currentTarget;
+      following.current = element.scrollHeight - element.clientHeight - element.scrollTop < 12;
+    }} onClick={() => {
       if (timer.current) clearInterval(timer.current);
       timer.current = null;
       setShown(text.length);

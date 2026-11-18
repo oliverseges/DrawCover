@@ -59,6 +59,10 @@ Text reveals alongside short, character-triggered syllables and can be tapped to
 show it instantly. Muting or playing music silences babble without stopping or restarting
 the reveal. Reduced motion shows all text immediately; screen readers receive the full
 message once, not individual letters. All scores and reviews are usable silently.
+On the album page a larger, fixed-height critic stage and speech box keep the
+character still as a review grows. Long speech scrolls inside its bubble, following
+the latest words unless the reader has scrolled up. Score and round controls stay
+separate; short desktop viewports scroll review details only when needed.
 
 > **One Google Gemini key is enough. One OpenRouter key also works.**
 > Prefer different providers for artwork and music? Configure each capability separately.

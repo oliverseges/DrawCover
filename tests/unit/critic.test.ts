@@ -79,6 +79,37 @@ it("types silently while muted, preserves progress on mute, and skips or reduces
   }
 });
 
+it("follows revealing speech until the reader scrolls up, then resumes only at the bottom", async () => {
+  vi.useFakeTimers();
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  vi.stubGlobal("matchMedia", () => ({ matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn() }));
+  const host = document.createElement("div");
+  const root = createRoot(host);
+  try {
+    await act(async () => root.render(createElement(CriticSpeech, {
+      text: "A long review with many lines. ".repeat(20), muted: true, onBabble: vi.fn(), onQuiet: vi.fn(),
+    })));
+    const bubble = host.querySelector("button")!;
+    let height = 300;
+    Object.defineProperties(bubble, { scrollHeight: { get: () => height }, clientHeight: { value: 100 } });
+    await act(async () => vi.advanceTimersByTime(28));
+    expect(bubble.scrollTop).toBe(300);
+    bubble.scrollTop = 20;
+    await act(async () => bubble.dispatchEvent(new Event("scroll", { bubbles: true })));
+    height = 400;
+    await act(async () => vi.advanceTimersByTime(56));
+    expect(bubble.scrollTop).toBe(20);
+    bubble.scrollTop = 300;
+    await act(async () => bubble.dispatchEvent(new Event("scroll", { bubbles: true })));
+    height = 500;
+    await act(async () => vi.advanceTimersByTime(28));
+    expect(bubble.scrollTop).toBe(500);
+  } finally {
+    await act(async () => root.unmount());
+    host.remove();
+  }
+});
+
 it("starts babble only on a gesture, mutes/stops, and cleans up on critic changes, hiding and unmount", async () => {
   vi.useFakeTimers();
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
