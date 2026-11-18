@@ -354,7 +354,7 @@
   .critic-mode-link:hover { border-color: #24262170; color: #242621; }
   .critic-mode-link:focus-visible { outline: 2px solid #242621; outline-offset: 3px; }
   .critic-mode-link[aria-disabled=true] { opacity: .4; pointer-events: none; }
-  .critic-mode:not(.has-album) { display: grid; grid-template-columns: minmax(230px, 280px) minmax(0, 900px); justify-content: center; align-items: start; gap: 34px; padding: 24px 28px 86px; background: radial-gradient(ellipse at 5% 50%, #cbd9ce44, transparent 55%), #faf9f6; }
+  .critic-mode:not(.has-album) { display: grid; grid-template-columns: minmax(230px, 280px) minmax(0, 900px); justify-content: center; align-items: start; gap: 34px; padding: 24px 28px 70px; background: radial-gradient(ellipse at 5% 50%, #cbd9ce44, transparent 55%), #faf9f6; }
   .critic-mode .drawing-room { padding: 14px 0 0; gap: 20px; animation: critic-desk-arrive .36s cubic-bezier(.22, 1, .36, 1) both; }
   .critic-mode.critic-leaving .drawing-room { animation: critic-desk-leave .36s cubic-bezier(.4, 0, .6, 1) both; }
   @keyframes critic-desk-arrive { from { transform: translateX(-84px); } 80% { transform: translateX(3px); } to { transform: translateX(0); } }

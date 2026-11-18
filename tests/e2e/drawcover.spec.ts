@@ -189,6 +189,16 @@ test("critic layout reserves drawing space and survives a reload interrupted by 
   expect(panel.x + panel.width).toBeLessThan(canvas.x);
   await expect.poll(() => critic.locator("canvas").count()).toBe(1);
   expect(await critic.locator("svg").evaluateAll(elements => elements.every(element => element.getBoundingClientRect().height <= 44))).toBe(true);
+  for (const viewport of [{ width: 1280, height: 720 }, { width: 1366, height: 768 }, { width: 1440, height: 900 }, { width: 1920, height: 1080 }]) {
+    await page.setViewportSize(viewport);
+    console.info("Critic viewport", await page.evaluate(() => ({
+      width: innerWidth, height: innerHeight, scrollHeight: document.documentElement.scrollHeight, scrollWidth: document.documentElement.scrollWidth,
+      roomHeight: document.querySelector(".critic-mode .drawing-room")?.getBoundingClientRect().height,
+      mainPadding: getComputedStyle(document.querySelector(".critic-mode")!).padding,
+    })));
+    expect(await page.evaluate(() => document.documentElement.scrollHeight <= innerHeight && document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  }
+  await page.setViewportSize({ width: 1280, height: 720 });
   await page.screenshot({ path: "output/playwright/critic-drawing-desktop.png" });
   await page.getByRole("button", { name: "Change critic", exact: true }).click();
   await page.getByRole("link", { name: "Normal mode", exact: false }).click();
