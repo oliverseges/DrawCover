@@ -1,0 +1,219 @@
+/* Every selector stays inside this component, including the raw-name fallback
+   for the project's Tailwind/Turbopack wildcard CSS loader. */
+.drawcoverCriticCharacter {
+  position: relative;
+  isolation: isolate;
+  width: 250px;
+  max-width: 100%;
+  aspect-ratio: 5 / 6;
+  margin-inline: auto;
+  flex: 0 0 auto;
+  pointer-events: none;
+  contain: layout style;
+  opacity: 1;
+  transform: translate(0, 0) scale(1);
+  --critic-ink: #49434d;
+  --critic-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --critic-entry-x: -36px;
+  --critic-entry-y: 0px;
+  --critic-settle-x: 1px;
+  --critic-settle-y: 0px;
+  --critic-exit-x: -28px;
+  --critic-exit-y: 0px;
+  transition: transform 360ms var(--critic-ease), opacity 360ms var(--critic-ease);
+}
+
+.drawcoverCriticCharacter .drawcoverCriticEntrance {
+  position: absolute;
+  inset: 0;
+  opacity: 1;
+  transform: translate(0, 0) scale(1);
+  animation: drawcover-critic-arrive 360ms var(--critic-ease) both;
+}
+
+/* Exit on the outer layer: cancelling a filled entry animation on the same
+   element suppresses CSS transitions and makes the character snap away. */
+.drawcoverCriticCharacter[data-leaving="true"] {
+  transform: translate(var(--critic-exit-x), var(--critic-exit-y)) scale(0.985);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.drawcoverCriticCharacter .drawcoverCriticStage {
+  position: absolute;
+  inset: 36px 0 0;
+}
+
+.drawcoverCriticCharacter .drawcoverCriticCanvasHost {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  opacity: 0;
+}
+
+.drawcoverCriticCharacter .drawcoverCriticCanvasHost canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.drawcoverCriticCharacter .drawcoverCriticStage[data-rendered="true"] .drawcoverCriticCanvasHost {
+  opacity: 1;
+}
+
+.drawcoverCriticCharacter .drawcoverCriticUnavailable:not([hidden]) {
+  position: absolute;
+  inset: 70px 12px auto;
+  margin: 0;
+  color: #77717d;
+  font: 400 11px/1.5 system-ui, sans-serif;
+  text-align: center;
+  text-wrap: balance;
+}
+
+.drawcoverCriticCharacter .drawcoverCriticChange {
+  position: absolute;
+  z-index: 1;
+  top: var(--critic-head-y, 0px);
+  left: var(--critic-head-x, 50%);
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--critic-ink);
+  transform: translateX(-50%);
+  cursor: pointer;
+  pointer-events: auto;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+.drawcoverCriticCharacter .drawcoverCriticChange::before {
+  position: absolute;
+  z-index: -1;
+  inset: 8px;
+  border: 1px solid rgb(88 72 92 / 18%);
+  border-radius: inherit;
+  background: #f5efe7;
+  box-shadow: 0 2px 6px rgb(34 25 43 / 6%);
+  content: "";
+  transition: background 150ms ease, box-shadow 150ms ease;
+}
+
+.drawcoverCriticCharacter .drawcoverCriticChange:focus-visible {
+  outline: 2px solid #7960a3;
+  outline-offset: -3px;
+}
+
+.drawcoverCriticCharacter .drawcoverCriticChange:active:not(:disabled)::before {
+  background: #dfd4e6;
+}
+
+.drawcoverCriticCharacter .drawcoverCriticChange:disabled {
+  opacity: 0.42;
+  cursor: default;
+}
+
+@media (hover: hover) {
+  .drawcoverCriticCharacter .drawcoverCriticChange:hover:not(:disabled)::before {
+    background: #e9deee;
+    box-shadow: 0 2px 8px rgb(34 25 43 / 12%);
+  }
+}
+
+@media (max-width: 800px) {
+  .drawcoverCriticCharacter {
+    width: 140px;
+    aspect-ratio: 28 / 37;
+    --critic-entry-x: 0px;
+    --critic-entry-y: 8px;
+    --critic-settle-x: 0px;
+    --critic-settle-y: -0.5px;
+    --critic-exit-x: 0px;
+    --critic-exit-y: 6px;
+  }
+
+  .drawcoverCriticCharacter .drawcoverCriticStage {
+    top: 34px;
+  }
+}
+
+@media (prefers-color-scheme: dark) {
+  .drawcoverCriticCharacter {
+    --critic-ink: #e5dfeb;
+  }
+
+  .drawcoverCriticCharacter .drawcoverCriticChange::before {
+    border-color: rgb(230 215 240 / 22%);
+    background: #302b3b;
+  }
+
+  .drawcoverCriticCharacter .drawcoverCriticChange:hover:not(:disabled)::before,
+  .drawcoverCriticCharacter .drawcoverCriticChange:active:not(:disabled)::before {
+    background: #4a3e57;
+  }
+
+  .drawcoverCriticCharacter .drawcoverCriticChange:focus-visible {
+    outline-color: #c3a9ed;
+  }
+
+  .drawcoverCriticCharacter .drawcoverCriticUnavailable {
+    color: #aaa1b3;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .drawcoverCriticCharacter,
+  .drawcoverCriticCharacter .drawcoverCriticEntrance {
+    animation: none;
+    transition: none;
+  }
+
+  .drawcoverCriticCharacter .drawcoverCriticChange::before {
+    transition: none;
+  }
+
+  .drawcoverCriticCharacter[data-leaving="true"] {
+    transform: none;
+  }
+}
+
+@media (forced-colors: active) {
+  .drawcoverCriticCharacter .drawcoverCriticChange {
+    color: ButtonText;
+  }
+
+  .drawcoverCriticCharacter .drawcoverCriticChange::before {
+    border-color: ButtonText;
+    background: ButtonFace;
+  }
+
+  .drawcoverCriticCharacter .drawcoverCriticChange:focus-visible {
+    outline-color: Highlight;
+  }
+
+  .drawcoverCriticCharacter .drawcoverCriticUnavailable {
+    color: CanvasText;
+  }
+}
+
+@keyframes drawcover-critic-arrive {
+  from {
+    opacity: 0;
+    transform: translate(var(--critic-entry-x), var(--critic-entry-y)) scale(0.985);
+  }
+  78% {
+    opacity: 1;
+    transform: translate(var(--critic-settle-x), var(--critic-settle-y)) scale(1);
+  }
+  to {
+    opacity: 1;
+    transform: translate(0, 0) scale(1);
+  }
+}

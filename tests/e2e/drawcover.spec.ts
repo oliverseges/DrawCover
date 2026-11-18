@@ -89,6 +89,130 @@ for (const width of [1280, 390]) {
   });
 }
 
+for (const viewport of [{ width: 1280, height: 720 }, { width: 1366, height: 768 }, { width: 1440, height: 900 }, { width: 1920, height: 1080 }, { width: 390, height: 720 }]) {
+  test(`vocal toggle is below the button at 70 percent width and fits ${viewport.width}x${viewport.height}`, async ({ page }) => {
+    await page.setViewportSize(viewport);
+    await page.goto("/");
+    const button = (await page.getByRole("button", { name: "PRESS RECORD", exact: true }).boundingBox())!;
+    const toggle = (await page.getByRole("group", { name: "Song vocals" }).boundingBox())!;
+    expect(toggle.y).toBeGreaterThanOrEqual(button.y + button.height + 8);
+    expect(toggle.width / button.width).toBeCloseTo(.7, 2);
+    expect(Math.abs(toggle.x + toggle.width / 2 - button.x - button.width / 2)).toBeLessThan(1);
+    expect(await page.evaluate(() => document.documentElement.scrollHeight <= innerHeight && document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await expect(page.getByRole("link", { name: "Critic mode", exact: false })).toBeVisible();
+  });
+}
+
+for (const reducedMotion of [false, true]) {
+  test(`critic rounds preserve drawings, bind a verdict and return to normal (${reducedMotion ? "reduced motion, no WebGL" : "animated"})`, async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: reducedMotion ? "reduce" : "no-preference" });
+    if (reducedMotion) {
+      await page.setViewportSize({ width: 390, height: 844 });
+      await page.addInitScript(() => {
+        const getContext = HTMLCanvasElement.prototype.getContext;
+        Object.defineProperty(HTMLCanvasElement.prototype, "getContext", { configurable: true, value: function (this: HTMLCanvasElement, ...args: unknown[]) {
+          if (String(args[0]).includes("webgl")) return null;
+          return Reflect.apply(getContext, this, args);
+        } });
+      });
+    }
+    await setup(page);
+    let albumCalls = 0;
+    let trackCalls = 0;
+    await page.route("**/api/drawcover", route => {
+      albumCalls++;
+      expect(route.request().postDataJSON()).toMatchObject({ criticId: "jax", musicMode: "lyrics" });
+      return route.fulfill({ json: { ...album, musicMode: "lyrics", genre: "rock", criticReview: {
+        criticId: "jax", basis: "concept", score: 9, headline: "A new cover story.",
+        text: "On paper, Where the Sun Sleeps brings raw rock energy. This is a concept verdict, not a listening review.",
+        preferences: "Guitar-driven rock; raw energy and dark artwork.", breakdown: { direction: 4, mood: 3, palette: 2 },
+      } } });
+    });
+    await page.route("**/api/drawcover/track", route => {
+      trackCalls++;
+      return route.fulfill({ json: { dataUrl: audio, model: "mock" } });
+    });
+    await draw(page);
+    const before = await page.getByTestId("drawing-canvas").evaluate(canvas => (canvas as HTMLCanvasElement).toDataURL());
+    await page.getByRole("link", { name: "Critic mode", exact: false }).click();
+    await expect(page).toHaveURL(/\/play$/);
+    await expect(page.getByRole("heading", { name: "Mara Moss" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Unmute critic" })).toBeVisible();
+    const change = page.getByRole("button", { name: "Change critic", exact: true });
+    await expect(change).toBeInViewport();
+    await change.click();
+    await expect(page.getByRole("heading", { name: "Jax Static" })).toBeVisible();
+    expect(await page.locator('[data-testid="drawing-canvas"]:visible').evaluate(canvas => (canvas as HTMLCanvasElement).toDataURL())).toBe(before);
+    expect(albumCalls).toBe(0);
+    expect(trackCalls).toBe(0);
+    await expect(page.getByText("Guitar-driven rock; raw energy and dark artwork.")).toHaveCount(0);
+    await page.locator("main:visible").getByText("Lyrics", { exact: true }).click();
+    await page.getByRole("button", { name: "PRESS RECORD", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Reveal verdict" })).toBeVisible();
+    await expect(change).toBeDisabled();
+    await page.getByRole("button", { name: "Reveal verdict" }).click();
+    await expect(page.getByRole("region", { name: "Critic's review" })).toContainText("9/10");
+    await expect(page.getByText("Concept judging only. No audio listening.")).toBeVisible();
+    await page.getByText("What won (or lost) them over").click();
+    await expect(page.getByText("Guitar-driven rock; raw energy and dark artwork.")).toBeVisible();
+    await page.evaluate(() => {
+      const label = document.createElement("div");
+      label.textContent = "MOCKED ALBUM / REVIEW - UI EVIDENCE";
+      label.setAttribute("data-mock-evidence", "");
+      Object.assign(label.style, { position: "fixed", top: "0", right: "0", background: "#fff1bd", color: "#29261b", padding: "5px 10px", font: "10px monospace", zIndex: "999" });
+      document.body.append(label);
+    });
+    await page.screenshot({ path: `output/playwright/critic-review-mocked-${reducedMotion ? "mobile" : "desktop"}.png`, fullPage: true });
+    await page.locator("[data-mock-evidence]").evaluate(element => element.remove());
+    await page.getByRole("button", { name: "Another round", exact: true }).first().click();
+    await expect(page.getByRole("heading", { name: "Nova Vale" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "PRESS RECORD", exact: true })).toBeEnabled();
+    await page.getByRole("link", { name: "Normal mode", exact: false }).click();
+    await expect(page).toHaveURL(/\/$/);
+    expect(await page.locator('[data-testid="drawing-canvas"]:visible').evaluate(canvas => (canvas as HTMLCanvasElement).toDataURL())).toBe(before);
+    await expect(page.getByRole("complementary", { name: "Your fictional music critic" })).toHaveCount(0);
+    expect(albumCalls).toBe(1);
+    expect(trackCalls).toBe(1);
+  });
+}
+
+test("critic layout reserves drawing space and survives a reload interrupted by a mode change", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await page.goto("/");
+  const normal = (await page.getByTestId("drawing-canvas").boundingBox())!;
+  await page.getByRole("link", { name: "Critic mode", exact: false }).click();
+  const critic = page.getByRole("complementary", { name: "Your fictional music critic" });
+  await expect(page.getByRole("button", { name: "Change critic", exact: true })).toBeVisible();
+  await expect.poll(async () => (await page.locator('[data-testid="drawing-canvas"]:visible').boundingBox())!.x).toBeGreaterThan(normal.x + 30);
+  const canvas = (await page.locator('[data-testid="drawing-canvas"]:visible').boundingBox())!;
+  const panel = (await critic.boundingBox())!;
+  expect(panel.x + panel.width).toBeLessThan(canvas.x);
+  await expect.poll(() => critic.locator("canvas").count()).toBe(1);
+  expect(await critic.locator("svg").evaluateAll(elements => elements.every(element => element.getBoundingClientRect().height <= 44))).toBe(true);
+  await page.screenshot({ path: "output/playwright/critic-drawing-desktop.png" });
+  await page.getByRole("button", { name: "Change critic", exact: true }).click();
+  await page.getByRole("link", { name: "Normal mode", exact: false }).click();
+  await expect(page).toHaveURL(/\/$/);
+  await page.getByRole("link", { name: "Critic mode", exact: false }).click();
+  await expect(page.getByRole("button", { name: "Change critic", exact: true })).toBeEnabled();
+  await page.getByRole("button", { name: "Change critic", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Jax Static" })).toBeVisible();
+  for (const viewport of [{ width: 390, height: 844 }, { width: 320, height: 568 }]) {
+    await page.setViewportSize(viewport);
+    const mobileCanvas = (await page.locator('[data-testid="drawing-canvas"]:visible').boundingBox())!;
+    const mobilePanel = (await critic.boundingBox())!;
+    expect(mobilePanel.y + mobilePanel.height).toBeLessThanOrEqual(mobileCanvas.y);
+    expect(mobileCanvas.width).toBeGreaterThanOrEqual(200);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await expect(page.getByRole("button", { name: "Change critic", exact: true })).toBeInViewport();
+    await expect(page.getByRole("button", { name: "Unmute critic" })).toBeInViewport();
+    const switchBox = (await page.getByRole("link", { name: "Normal mode", exact: false }).boundingBox())!;
+    const goBox = (await page.getByRole("button", { name: "PRESS RECORD", exact: true }).boundingBox())!;
+    expect(switchBox.y >= goBox.y + goBox.height || switchBox.x >= goBox.x + goBox.width || switchBox.x + switchBox.width <= goBox.x).toBe(true);
+    await page.screenshot({ path: `output/playwright/critic-drawing-mobile-${viewport.width}.png`, fullPage: true });
+  }
+});
+
 for (const viewport of [{ width: 1280, height: 720 }, { width: 390, height: 844 }]) {
   test(`floating GitHub link stays accessible beside both screens and notifications at ${viewport.width}px`, async ({ page }) => {
     await page.setViewportSize(viewport);

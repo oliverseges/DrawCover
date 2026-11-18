@@ -91,6 +91,43 @@ async function album(musicMode?: "instrumental" | "lyrics", recordingId?: string
 }
 
 describe("DrawCover album endpoint", () => {
+  it("binds one authoritative concept review to a cached/recoverable game album, separate from normal and other critics", async () => {
+    const receipt = crypto.randomUUID();
+    const make = (criticId?: string) => {
+      const input = request({ image: IMAGE, ...(criticId ? { criticId } : {}) });
+      if (criticId === "mara") input.headers.set("X-DrawCover-Recording", receipt);
+      return albumPost(input);
+    };
+    const [first, joined] = await Promise.all([make("mara"), make("mara")]);
+    const game = await first.json();
+    expect(await joined.json()).toEqual(game);
+    expect(game.criticReview).toMatchObject({ criticId: "mara", basis: "concept" });
+    expect(game.criticReview.score).toBeGreaterThanOrEqual(0);
+    expect(game.criticReview.score).toBeLessThanOrEqual(10);
+    expect(game.criticReview.text).toContain(game.title);
+    expect(await (await make("mara")).json()).toEqual(game);
+    const { GET } = await import("@/app/api/drawcover/recording/route");
+    for (let index = 0; index < 3; index++) expect(await (await GET(new Request(`http://localhost/api/drawcover/recording?id=${receipt}`))).json()).toEqual(game);
+    expect(recognizeDrawing).toHaveBeenCalledTimes(1);
+    const normal = await (await make()).json();
+    const other = await (await make("jax")).json();
+    expect(normal.criticReview).toBeUndefined();
+    expect(other.criticReview.criticId).toBe("jax");
+    expect(new Set([game.id, normal.id, other.id]).size).toBe(3);
+    expect(recognizeDrawing).toHaveBeenCalledTimes(3);
+    expect(fetcher).not.toHaveBeenCalled();
+    const spoof = request({ image: IMAGE, criticId: "jax" });
+    spoof.headers.set("X-DrawCover-Recording", receipt);
+    expect((await albumPost(spoof)).status).toBe(409);
+    expect(recognizeDrawing).toHaveBeenCalledTimes(3);
+  });
+
+  it.each([{ criticId: "real-person" }, { criticId: null }, { criticId: "mara", criticReview: { score: 10 } }, { criticId: "jax", preferences: "everything" }])("rejects invalid critics and client-authored scoring before spending", async extra => {
+    expect((await albumPost(request({ image: IMAGE, ...extra }))).status).toBe(400);
+    expect(generateContent).not.toHaveBeenCalled();
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
   it("uses one cache entry for omitted/default Instrumental mode", async () => {
     const original = await album();
     expect(original.musicMode).toBe("instrumental");

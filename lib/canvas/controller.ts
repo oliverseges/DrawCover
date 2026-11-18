@@ -6,6 +6,8 @@ export const CANVAS_WIDTH = 800;
 export const CANVAS_HEIGHT = 600;
 
 let canvas: HTMLCanvasElement | null = null;
+let coverDraft: ImageData | null = null;
+let preserveDraft = false;
 
 const ctx = () => canvas?.getContext("2d", { willReadFrequently: true }) ?? null;
 
@@ -14,13 +16,15 @@ function restore(snapshot: ImageData | null) {
 }
 
 export const canvasController = {
-  attach(el: HTMLCanvasElement | null) {
+  attach(el: HTMLCanvasElement | null, preserve = false) {
+    if (!el && preserveDraft) coverDraft = ctx()?.getImageData(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT) ?? coverDraft;
     canvas = el;
+    preserveDraft = preserve;
     const c = ctx();
     if (el && c) {
-      useDrawingStore
-        .getState()
-        .resetHistory(c.getImageData(0, 0, el.width, el.height));
+      if (preserve && coverDraft) c.putImageData(coverDraft, 0, 0);
+      else useDrawingStore.getState().resetHistory(c.getImageData(0, 0, el.width, el.height));
+      if (!preserve) coverDraft = null;
     }
   },
 

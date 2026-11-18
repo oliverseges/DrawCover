@@ -22,6 +22,7 @@ const browser = await chromium.launch();
 try {
   for (const cutPath of slow ? ["/api/drawcover/track"] : [null, "/api/drawcover", "/api/drawcover/track"]) {
     const musicMode = cutPath === "/api/drawcover/track" ? "lyrics" : "instrumental";
+    const criticMode = cutPath === "/api/drawcover";
     let calls = 0;
     let cut = false;
     const runtime = new Miniflare(convertV4MiniflareOptions({
@@ -100,7 +101,7 @@ try {
         path: new URL(request.url()).pathname, error: request.failure()?.errorText,
       }));
       const started = Date.now();
-      await page.goto(base);
+      await page.goto(`${base}${criticMode ? "/play" : ""}`);
       const box = await page.getByTestId("drawing-canvas").boundingBox();
       await page.mouse.move(box.x + box.width * .3, box.y + box.height * .4);
       await page.mouse.down();
@@ -115,6 +116,10 @@ try {
       const playback = await page.locator("audio").evaluate(audio => ({
         readyState: audio.readyState, currentTime: audio.currentTime, duration: audio.duration,
       }));
+      if (criticMode) {
+        await page.getByRole("button", { name: "Reveal verdict" }).click();
+        assert.ok((await page.getByRole("region", { name: "Critic's review" }).textContent()).includes("/10"));
+      }
       assert.equal(cut, Boolean(cutPath));
       assert.equal(calls, 3, "Exactly one metadata/art/music call, including after interrupted delivery");
       assert.equal(postReceipts.length, 2, "One album POST and one track POST; never automatically regenerate");
@@ -125,10 +130,16 @@ try {
         Array.from({ length: 3 }, () => context.request.get(`${base}/api/drawcover/recording?id=${id}`)),
       ));
       assert.ok(restored.every(response => response.status() === 200));
+      if (criticMode) {
+        const albums = await Promise.all(restored.slice(0, 3).map(response => response.json()));
+        assert.equal(albums[0].criticReview.criticId, "mara");
+        assert.deepEqual(albums[0].criticReview, albums[1].criticReview);
+        assert.deepEqual(albums[1].criticReview, albums[2].criticReview);
+      }
       const usage = await (await context.request.get(`${base}/api/drawcover/status`)).json();
       assert.deepEqual(usage.daily.used, { album: 1, track: 1 });
       assert.equal(calls, 3);
-      results.push({ cutPath, musicMode, elapsedMs: Date.now() - started, providerCalls: calls, usage: usage.daily.used, playback, network });
+      results.push({ cutPath, musicMode, criticMode, elapsedMs: Date.now() - started, providerCalls: calls, usage: usage.daily.used, playback, network });
     } finally {
       await context.close();
       proxy.closeAllConnections();

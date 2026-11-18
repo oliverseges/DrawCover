@@ -35,9 +35,9 @@ export function DrawingCanvas({ layout = "workspace" }: { layout?: "workspace" |
   const size = useDrawingStore((s) => s.size);
 
   useEffect(() => {
-    canvasController.attach(baseRef.current);
+    canvasController.attach(baseRef.current, layout === "cover");
     return () => canvasController.attach(null);
-  }, []);
+  }, [layout]);
 
   const toPoint = useCallback((e: { clientX: number; clientY: number }): Point => {
     const rect = baseRef.current!.getBoundingClientRect();

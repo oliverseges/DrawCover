@@ -8,6 +8,8 @@ import { DrawCoverConfigError, drawCoverConfig, providerKey, validateMusicMode, 
 import { LYRICS_GENRES, type Album, type DrawCoverTrack, type MusicMode } from "@/lib/drawcover";
 import { HostedDemoError, hostedAlbum, hostedGeneration, hostedRecording, isHostedDemo } from "@/lib/drawcover-hosted";
 import { validRecordingId } from "@/lib/recording";
+import { CRITIC_IDS, type CriticId } from "@/lib/critics";
+import { reviewAlbum } from "@/lib/critic-review";
 
 const MAX_IMAGE_BYTES = 4 * 1024 * 1024;
 const MAX_OUTPUT_BYTES = 2 * 1024 * 1024;
@@ -239,10 +241,14 @@ function validPng(bytes: Buffer): boolean {
   return false;
 }
 
-function drawingInput(input: unknown): { base64: string; musicMode: MusicMode } {
+function drawingInput(input: unknown): { base64: string; musicMode: MusicMode; criticId?: CriticId } {
   const body = z.object({
     image: z.string(), musicMode: z.enum(["instrumental", "lyrics"]).default("instrumental"),
+    criticId: z.enum(CRITIC_IDS).optional(),
   }).strict().safeParse(input);
+  if (!body.success && body.error.issues.some(issue => issue.path[0] === "criticId")) {
+    throw new DrawCoverError(400, "Choose an available critic before pressing record.");
+  }
   if (!body.success && body.error.issues.some(issue => issue.path[0] === "musicMode")) {
     throw new DrawCoverError(400, "Choose Instrumental or Lyrics for the vocal mode.");
   }
@@ -253,7 +259,7 @@ function drawingInput(input: unknown): { base64: string; musicMode: MusicMode } 
   if (!validPng(decodeBase64(base64, MAX_IMAGE_BYTES))) {
     throw new DrawCoverError(400, "A valid PNG drawing is required.");
   }
-  return { base64, musicMode: body.data.musicMode };
+  return { base64, musicMode: body.data.musicMode, criticId: body.data.criticId };
 }
 
 const title = z.string().trim().min(1).max(100).regex(/^[^\u0000-\u001f\u007f]+$/);
@@ -291,7 +297,7 @@ const metadataJsonSchema = {
   additionalProperties: false,
 };
 
-async function createAlbum(base64: string, config: ReturnType<typeof drawCoverConfig>, musicMode: MusicMode): Promise<StoredAlbum> {
+async function createAlbum(base64: string, config: ReturnType<typeof drawCoverConfig>, musicMode: MusicMode, criticId?: CriticId): Promise<StoredAlbum> {
   const { models, metadataProvider } = config;
   const apiKey = providerKey(metadataProvider);
   const prompt = "Privately identify the subject of this person's sketch. " +
@@ -366,14 +372,16 @@ async function createAlbum(base64: string, config: ReturnType<typeof drawCoverCo
     throw new DrawCoverError(502, "The AI service returned invalid album details.");
   }
   const artwork = await generateAlbumCover(base64, metadata, models.image);
+  const album: Album = { id: randomUUID(), ...metadata, musicMode, cover: artwork.cover, models: { ...models, image: artwork.model } };
+  if (criticId) album.criticReview = reviewAlbum(album, criticId);
   return {
-    album: { id: randomUUID(), ...metadata, musicMode, cover: artwork.cover, models: { ...models, image: artwork.model } },
+    album,
     musicProvider: config.musicProvider,
   };
 }
 
 export async function generateAlbum(input: unknown, recordingId?: string | null): Promise<Album> {
-  const { base64, musicMode } = drawingInput(input);
+  const { base64, musicMode, criticId } = drawingInput(input);
   const config = drawCoverConfig();
   validateMusicMode(musicMode, config.musicProvider, config.models.music);
   if (musicMode === "lyrics") providerKey(config.musicProvider);
@@ -382,8 +390,9 @@ export async function generateAlbum(input: unknown, recordingId?: string | null)
     .update(JSON.stringify([!!process.env.GEMINI_API_KEY?.trim(), !!process.env.OPENROUTER_API_KEY?.trim()]));
   // Keep old/default instrumental cache keys; lyrics are always a separate record.
   if (musicMode === "lyrics") hash.update("lyrics:v1");
+  if (criticId) hash.update(`critic:v1:${criticId}`);
   const key = hash.digest("hex");
-  const create = () => createAlbum(base64, config, musicMode);
+  const create = () => createAlbum(base64, config, musicMode, criticId);
   if (recordingId != null && !validRecordingId(recordingId)) throw new DrawCoverError(400, "Invalid recording ID.");
   if (isHostedDemo()) {
     return (await hostedGeneration("album", `album:${key}`, create, safeError, (value) => value.album.id, recordingId)).album;

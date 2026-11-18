@@ -1,3 +1,5 @@
+import type { CriticReview } from "@/lib/critics";
+
 export type MusicMode = "instrumental" | "lyrics";
 export const LYRICS_GENRES = ["pop", "rock", "hip-hop", "country", "dance", "R&B", "soul", "folk"] as const;
 
@@ -18,6 +20,7 @@ export type Album = {
   subtitle: string;
   musicMode?: MusicMode;
   genre?: typeof LYRICS_GENRES[number];
+  criticReview?: CriticReview;
   palette: [string, string, string];
   tracks: { title: string }[];
   cover: {

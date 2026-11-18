@@ -20,6 +20,40 @@ The first **~30-second track** starts automatically; the other seven are made on
 you choose them. Flip the record, explore its printed back cover, and keep listening
 from the separate player.
 
+### Critic mode
+
+The subtle bottom-right **Critic mode** link opens [/play](https://drawcover.oeng.dev/play).
+An original, modeled 3D critic arrives on the left; desktop drawing controls shift right.
+On mobile a compact model sits above the canvas. Changing critics
+with the above-head reload button is free and keeps the drawing. **Normal mode** returns
+to the centered studio; reduced motion removes the entrance/exit animations. Without
+WebGL the game keeps its accessible controls and written review, with a small unavailable
+message instead of a duplicate 2D character.
+
+Guess a fictional critic's taste from their outfit and props, then press record with
+either Instrumental or Lyrics selected. **Reveal verdict** shows a score out of 10,
+an in-character written review, and the musical preferences behind it. These are
+**concept reviews, not audio listening**: server-only rules score the generated musical
+direction (4 points), mood (3) and sleeve palette (3). No critic is modeled on a real
+person; scores are deterministic rather than random.
+
+One immutable review is included in each game album's existing reservation, so the
+shared **25 albums/day and 40 tracks/day** caps and personal abuse cooldown still apply.
+There is no extra paid review call or public rescoring endpoint. Album ID, selected
+critic, vocal mode, cached result and recovery receipt stay bound together; repeating
+reads cannot spend or reinterpret the verdict. Another round returns to the drawing
+with a new critic; another generated album uses the normal album allowance.
+
+The discoverable **Sound off/on** control enables short, original synthesized babbles
+and grunts after a user gesture. Each critic has a different oscillator voice; no
+recordings, speech service or AI credits are used. Mouth/gesture bursts, gentle idles
+and review poses remain optional decoration. Music playback stops babble, revealing
+a verdict pauses music, and mute, hidden tabs, critic changes and navigation stop it.
+Short speech bubbles greet and react; the review appears in the same bubble.
+Text reveals alongside babble and can be tapped to show it instantly. Muted or
+reduced-motion bubbles show all text immediately; screen readers receive the full
+message once, not individual letters. All scores and reviews are usable silently.
+
 > **One Google Gemini key is enough. One OpenRouter key also works.**
 > Prefer different providers for artwork and music? Configure each capability separately.
 > Keys belong in your local server environment, never in the browser.
