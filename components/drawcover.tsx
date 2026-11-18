@@ -4,6 +4,9 @@ import { useState, type CSSProperties } from "react";
 import { ArrowLeft, Brush, Circle, Eraser, LoaderCircle, Minus, PaintBucket, Pause, Play, Redo2, Square, Trash2, Undo2 } from "lucide-react";
 import { AlbumAmbient, AlbumTracklist } from "@/components/album-effects";
 import { AlbumJacket } from "@/components/album-jacket";
+import { showGenerationLimit } from "@/components/generation-limit-toast";
+import { RecordingStatus } from "@/components/recording-status";
+import { generationRequest } from "@/lib/generation-request";
 import { DrawingCanvas } from "@/components/drawing-canvas";
 import { useAlbumPlayer } from "@/components/use-album-player";
 import { useShortcuts } from "@/components/toolbar/use-shortcuts";
@@ -37,12 +40,8 @@ export function DrawCover() {
     setLoading(true);
     setError("");
     try {
-      const response = await fetch("/api/drawcover", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ image }),
-      });
-      const body = await response.json();
+      const { response, body } = await generationRequest<Album>("/api/drawcover", { image });
+      if (showGenerationLimit(response, body)) return;
       if (!response.ok) throw new Error(body.message || "Your record couldn't be made. Please try again.");
       const result: Album = body;
       if (!result.cover.dataUrl) result.cover.dataUrl = await stylizeDrawing(image, result.palette);
@@ -81,8 +80,8 @@ export function DrawCover() {
           <div className={`cover-canvas ${loading ? "is-making" : ""}`} inert={loading}>
             <DrawingCanvas layout="cover" />
           </div>
-          <button className="go-button" type="button" onClick={() => void go()} disabled={drawing.isEmpty || loading}>GO</button>
-          {loading && <div className="making-status" role="status"><LoaderCircle size={15} className="spin" /> Turning your lines into a record<span className="loading-dots">...</span></div>}
+          <button className="go-button" type="button" onClick={() => void go()} disabled={drawing.isEmpty || loading}>PRESS RECORD</button>
+          {loading && <RecordingStatus />}
           {error && <p className="studio-error" role="alert">{error}</p>}
         </section>
       ) : (

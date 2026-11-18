@@ -6,9 +6,9 @@
 
 A sketch becomes cover art, a fictional artist, eight track titles, and a sound of its own.
 
-**No prompt box. No guessing game. Just draw, then GO.**
+**No prompt box. No guessing game. Just draw, then PRESS RECORD.**
 
-[See it in motion](#the-demo) &nbsp; / &nbsp; [Run it locally](#quick-start) &nbsp; / &nbsp; [Choose your provider](#bring-your-own-key)
+[Try DrawCover](https://drawcover.oeng.dev) &nbsp; / &nbsp; [See it in motion](#the-demo) &nbsp; / &nbsp; [Run it locally](#quick-start)
 
 ![A real DrawCover result: Midnight Prowl and Velvet Purr, with a physical cat-themed album and a separate music player](docs/media/front.webp)
 
@@ -24,9 +24,24 @@ from the separate player.
 > Prefer different providers for artwork and music? Configure each capability separately.
 > Keys belong in your local server environment, never in the browser.
 
+## Try it online
+
+**Public demo address: [drawcover.oeng.dev](https://drawcover.oeng.dev).**
+Deployment/setup status is available [here](https://drawcover.oeng.dev/api/drawcover/status).
+If generation is unavailable, the demo may still need its server key, be busy, or have
+reached its daily allowance. You never need to supply a key to the public website.
+The daily allowance is **site-wide**: other visitors can use it before your first album.
+It is not a day-long ban on your account or network.
+
+The full app runs on **Cloudflare Workers**, not GitHub Pages. GitHub Pages cannot host
+the server routes or safely use a repository secret in browser JavaScript.
+The public demo uses OpenRouter only, with per-network limits and strict global
+generation-request caps; [self-hosting instructions](#deploy-your-own-cloudflare-demo)
+are below. Local installations can still use direct Gemini, OpenRouter or mixed providers.
+
 ## The demo
 
-[![Silent animated walkthrough: drawing a cat, pressing GO, revealing an album, flipping it, and using playback](docs/media/drawcover-demo.gif)](docs/media/drawcover-demo.mp4)
+[![Silent animated walkthrough: drawing a cat, generating an album, flipping it, and using playback](docs/media/drawcover-demo.gif)](docs/media/drawcover-demo.mp4)
 
 **[Watch/download the 48-second video with music](docs/media/drawcover-demo.mp4)**
 &nbsp; · &nbsp;
@@ -42,12 +57,13 @@ Its soundtrack is the actual generated first track, added during editing rather 
 recorded from system audio. The GIF is a **silent, 2x overview** of that edited video
 (about 5 MB). Screenshots reuse the same real result; they do not spend more credits.
 [Capture details](docs/media/demo-evidence.json).
+The historical recording/screenshots predate the **PRESS RECORD** label and custom favicon.
 
 ## From a blank page to side A
 
-| 1. Make your mark | 2. Press GO |
+| 1. Make your mark | 2. PRESS RECORD |
 |---|---|
-| ![The original cat-and-moon sketch, drawing toolbar and GO button](docs/media/drawing.webp) | ![The real generation state while DrawCover turns the sketch into a record](docs/media/generating.webp) |
+| ![The original cat-and-moon sketch, drawing toolbar and primary action button](docs/media/drawing.webp) | ![The real generation state while DrawCover turns the sketch into a record](docs/media/generating.webp) |
 | Brush, erase, draw shapes, fill areas, change ink and size, undo or redo. Rough is fine. | The subject stays behind the scenes. Album details and artwork are generated first; track 1 follows. |
 
 | 3. Meet your record | 4. Turn it over |
@@ -77,6 +93,8 @@ WebGL uses a flat cover with a gentle crossfade instead of tilt and 3D rotation.
   Canvas UI particle reveal and restrained sparks.
 - **Controls that remain controls.** Keyboard flip, ordinary track buttons and native audio
   controls; no cursor-following overlays over the tracklist.
+- **A studio with a sense of humor.** Recording messages rotate while artwork is pending,
+  without repeated screen-reader announcements or pretend progress percentages.
 
 The cover's **content note** says instrumental music was requested. It is not an official
 age rating, a certified clean-content guarantee, or a fabricated Parental Advisory warning.
@@ -88,8 +106,8 @@ You need provider access and billing/credits for AI artwork and music.
 No database or separate backend service is required.
 
 ```sh
-git clone https://github.com/oliverseges/DrawSound.git
-cd DrawSound
+git clone https://github.com/oliverseges/DrawCover.git
+cd DrawCover
 npm install
 ```
 
@@ -112,7 +130,7 @@ leave unused keys and optional overrides empty. Then:
 npm run dev
 ```
 
-Open **http://localhost:3000**, draw something, and press **GO**.
+Open **http://localhost:3000**, draw something, and press **PRESS RECORD**.
 If the port is taken, use `npm run dev -- -p 3001` and open http://localhost:3001.
 Restart the server after changing environment variables.
 
@@ -184,7 +202,7 @@ A speech model is not a music substitute. Model availability varies by account a
 
 ### Cost and timing
 
-**GO is a paid action once keys are configured.** It generates album details and artwork,
+**PRESS RECORD is a paid action once keys are configured.** It generates album details and artwork,
 then automatically requests track 1. Selecting an unmade track is another paid music call.
 
 As checked on November 17, 2026, both
@@ -202,7 +220,7 @@ an example, not a latency promise. There are no automatic retry loops.
 
 ```mermaid
 flowchart LR
-    Draw["Browser: canvas + GO"] --> Album["Next.js: album route"]
+    Draw["Browser: canvas + PRESS RECORD"] --> Album["Next.js: album route"]
     Album --> Details["Gemini direct or OpenRouter vision"]
     Details --> Cover["Image editing or local drawing remix"]
     Cover --> Record["Themed front/back record + 8 titles"]
@@ -225,7 +243,7 @@ The important seams are `lib/drawcover-config.ts` (routing), `lib/drawcover-serv
 
 ### The original DrawSound
 
-The repository is still named **DrawSound**. DrawCover is the home page; the earlier
+DrawCover is the home page; the earlier **DrawSound**
 drawing-to-sound experiment remains at `/drawsound`. That legacy route uses
 `GEMINI_API_KEY` / `GEMINI_MODEL` for recognition and licensed Wikimedia recordings
 or Web Audio synthesis for playback. Its optional AI-audio button still uses
@@ -243,9 +261,13 @@ npm run test:e2e
 npm run build
 ```
 
+For the actual Workers runtime, also run `npm run cf:build` then `npm run test:workers`.
+This regression drives the upload bundle and SQLite Durable Object with **all outbound
+provider traffic mocked**, including replay, daily-cap and personal-cooldown checks.
+
 Unit tests mock providers. Browser tests mock generation endpoints: **tests spend no AI
 credits**. They cover provider combinations/fallback, invalid configuration, cache and
-error behavior, drawing → GO → playback, keyboard/touch flipping, reduced-motion/WebGL
+error behavior, drawing → PRESS RECORD → playback, keyboard/touch flipping, reduced-motion/WebGL
 fallback, and desktop viewport fit.
 
 To reuse the local :3001 server instead of starting the test server:
@@ -259,7 +281,7 @@ npm run test:e2e
 
 | Symptom | What to check |
 |---|---|
-| GO is disabled | Add at least one mark to the canvas. |
+| PRESS RECORD is disabled | Add at least one mark to the canvas. |
 | Configuration error | Add the selected provider's key to `.env`, use a supported selector, and restart. Check for an overriding `.env.local` or shell variable. |
 | Artwork is a drawing remix | Billing, image-model access, region, safety filtering or a provider failure may prevent AI artwork. `auto` tries configured image providers; explicit selection does not. Server logs contain redacted image diagnostics. |
 | Cover appears, but a track fails | Check music billing/credits and model access. The album stays usable and the affected track has its own error state. Recent failures are cached for about two minutes. |
@@ -270,7 +292,7 @@ npm run test:e2e
 
 ## Privacy and deployment
 
-Drawing stays local until **GO**. Then the selected provider receives the drawing or
+Drawing stays local until **PRESS RECORD**. Then the selected provider receives the drawing or
 its interpretation; image providers receive the original drawing. Music providers
 receive the album theme and track title. Keys are read from server environment variables,
 never sent to the browser. Do not draw sensitive or confidential material.
@@ -287,6 +309,149 @@ abuse controls and a deliberate storage/deployment design. A public source repos
 does not make it safe to expose an unrestricted server backed by your keys.
 Dependency advisories are not currently zero: review `npm audit` and upstream updates
 before deployment. The showcase is not a security certification.
+
+### Deploy your own Cloudflare demo
+
+This repository includes an [OpenNext adapter](https://opennext.js.org/cloudflare),
+[`wrangler.jsonc`](wrangler.jsonc), and a
+[GitHub Actions deployment](.github/workflows/deploy-cloudflare.yml).
+OpenNext 1.20.17 supports this Next.js 16 version, App Router and route handlers.
+It uses `nodejs_compat` and `global_fetch_strictly_public` with compatibility date
+`2026-11-18`. Cloudflare currently recommends vinext for new apps; this existing Next.js
+app deliberately uses the documented OpenNext deployment path.
+Cache Components/partial prefetching are disabled only for the Workers build: the
+uncached static shell avoids a workerd rendering hang. `npm run dev` is unchanged.
+
+**Account and hostname**
+
+Create a Cloudflare account, activate your domain as a Cloudflare zone, and select a
+Workers plan that fits the deployed bundle and usage. Review Workers and Durable Objects
+pricing; AI request caps do not cap Cloudflare hosting charges. The current deployment
+uses Workers Free: its CPU/request quotas still apply and may require a plan change for
+reliable larger generations. No billing plan is upgraded by this repository. Set your own `account_id`,
+Worker `name`, matching `WORKER_SELF_REFERENCE.service`, and custom-domain `routes` in
+`wrangler.jsonc` if forking. The checked-in values target this project's account and
+`drawcover.oeng.dev`; do not deploy those unchanged to another account. Wrangler creates
+the custom-domain DNS and certificate; do not overwrite a hostname used by another service.
+
+**Automatic deployment**
+
+In Cloudflare, create an API token using **Edit Cloudflare Workers**, scoped to your
+target account and zone. The permissions needed for this configuration are:
+
+| Scope | Permission | Purpose |
+|---|---|---|
+| Account, target account only | **Workers Scripts: Edit** | Upload Worker/assets, SQLite Durable Object migrations/bindings, secrets and custom-domain association. |
+| Account, target account only | **Account Settings: Read** | Resolve/verify the selected account. |
+| Zone, target zone only | **Zone: Read** | Resolve the active custom-domain zone. |
+| Zone, target zone only | **Workers Routes: Edit** | Manage Worker domain/routing configuration. |
+
+No R2/KV/D1 resources, global API key or signing secret are required. The private Durable
+Object binding is the trusted state boundary; browsers receive opaque album IDs, not
+unsigned generation prompts. See the [official CI guide](https://developers.cloudflare.com/workers/ci-cd/external-cicd/github-actions/)
+and [custom-domain API permissions](https://developers.cloudflare.com/api/resources/workers/subresources/domains/methods/update/).
+
+Add these **GitHub repository secrets** under Settings → Secrets and variables → Actions:
+
+| Secret | Where it comes from |
+|---|---|
+| `OPENROUTER_API_KEY` | Your OpenRouter key, preferably with a small provider-side hard credit/spend limit. |
+| `CLOUDFLARE_API_TOKEN` | The scoped token above; never put it in a file committed to Git. |
+| `CLOUDFLARE_ACCOUNT_ID` | Cloudflare dashboard account ID. |
+
+Push to `main` or run **Actions → Deploy DrawCover → Run workflow**. Missing secrets cause
+a clean skip with an explanatory notice, not a half-configured deploy. The key is passed
+only to the deploy step. If the Worker has no key yet, it is written to a runner-temporary
+restricted file, seeded as a **Worker Secret alongside the code**, then the file is removed.
+An existing Worker key is preserved, not overwritten from GitHub or local `.env`.
+It is not provided to the build or browser. OAuth/MCP login does not configure GitHub Actions.
+
+**First manual deployment**
+
+```sh
+npm ci
+npm run cf:build
+npx wrangler login
+npm run cf:deploy
+```
+
+Then open **Cloudflare → Workers & Pages → drawcover → Settings → Variables and Secrets**,
+add `OPENROUTER_API_KEY` as a **Secret**, and deploy the change. Alternatively,
+`npx wrangler secret put OPENROUTER_API_KEY` prompts securely in your terminal.
+The GitHub repository secret cannot be read back by Wrangler; these are separate stores.
+Do not paste any key into the website, README, issues or chat. Until the Worker secret
+exists, generation fails closed with 503. Existing Worker secrets are preserved by manual
+code deploys and CI. Rotate an existing production key in Cloudflare's Worker settings.
+
+After deployment, the URL is `https://drawcover.<your-workers-subdomain>.workers.dev`
+and, once its certificate is ready, your configured custom domain. The read-only
+`/api/drawcover/status` endpoint reports whether bindings/key are configured, never their
+values. It checks configuration, **not** provider credit balance or model access.
+
+**Public-demo protections and storage**
+
+- Per-IP/network: **2 album requests and 8 track requests per 60 seconds**. Cloudflare's
+  [Rate Limiting binding](https://developers.cloudflare.com/workers/runtime-apis/bindings/rate-limit/)
+  is approximate per location; shared networks can share the allowance. Exceeding either
+  threshold starts a **15-minute network cooldown**, shared across locations in the Durable
+  Object. Denied attempts do not extend it. A Sonner toast shows the actual remaining time;
+  server 429 responses include `reason: "cooldown"`, `Retry-After` and `retryAfterSeconds`.
+  The DO stores a hash of the network IP only for the cooldown, not the raw address.
+- Globally: **10 album generations + 40 track generations per UTC day**, reserved
+  atomically in one named SQLite Durable Object before paid work. Failures count;
+  cached results do not. These are **request caps, not guaranteed dollar spending limits**.
+  At most one metadata call plus one image call per album, and one music call per track;
+  provider prices can change. Daily exhaustion uses `reason: "daily_limit"` and a distinct
+  shared-allowance toast, with the wait until midnight UTC in hours/minutes.
+  Limit notices remain readable until dismissed, never stack duplicates, and are not
+  personal day-long timeouts.
+  Also use a restricted OpenRouter key and account alerts.
+- At most **2 albums and 4 tracks generating concurrently** worldwide. Duplicate
+  in-flight requests return 409; no second paid job starts. Leases expire after four
+  minutes, failures cache for two minutes, successful results are available for 30 minutes.
+- The Durable Object stores album details/artwork and generated audio, so IDs and cached
+  tracks survive isolate changes and deployments. An alarm removes expired application
+  records; Cloudflare's SQLite backups/PITR can retain prior data under its retention
+  policy. This is not a permanent personal library or authentication system.
+- Input PNGs are bounded to 4 MiB decoded, JSON bodies are streamed with byte/time limits,
+  and track requests to 1 KiB. Invalid requests do not reserve paid work. Hosted models
+  are fixed to the documented OpenRouter defaults; local provider/model overrides cannot
+  silently switch hosted billing. Legacy recognition and AI-sound endpoints are disabled.
+
+Caps live in `wrangler.jsonc`: `DRAWCOVER_DAILY_ALBUM_LIMIT` and
+`DRAWCOVER_DAILY_TRACK_LIMIT`. Set both to `"0"` to pause new paid work. Invalid/missing
+caps fail closed; supported maxima are 100/400 per day. Changing names/DO IDs resets the
+state boundary, so do not rotate them to bypass counters. Redeploy after editing limits.
+Rate thresholds are the two `ratelimits` bindings. All protection failures return clear
+429/503 messages; same-origin checks are defense-in-depth, not authentication.
+Local `next dev` / `next start` enforce the same 2/8-per-minute and 15-minute cooldown
+in a single process-wide development bucket, rather than trusting spoofable client IP
+headers. Everyone sharing a local server shares that bucket. Public per-IP limits and
+strict global daily counters use the hosted Cloudflare bindings; restarting a local
+process clears its local cooldown, not the hosted Durable Object.
+The read-only `/api/drawcover/status` endpoint includes the shared day's `used`,
+`limits` and `resetsAt` values. It reveals no keys, drawings, album IDs or visitor IPs.
+Status checks, in-flight duplicate requests and cached generation reads do not reserve
+another paid generation. Invalid input and missing provider configuration are rejected
+before reserving; once a provider request is attempted, failures conservatively count.
+
+Browser requests have a deadline covering both headers **and response bodies** (120 seconds
+for artwork/metadata, 75 seconds for music), so a lost response cannot leave playback
+permanently stuck on MAKING. A deliberate Retry checks the same album/track cache;
+there are no automatic generation retries. Browser/network interruption can occur after
+server work finishes. A failed provider attempt is cached for two minutes to avoid
+immediate repeated spending; a subsequent deliberate attempt may cost another generation.
+
+For local Workers validation, run `npm run cf:build` then
+`npm run cf:preview -- --port 8787`. Use an ignored `.dev.vars` for explicit preview
+secrets if needed; real requests still cost money. The build removes private `.env`
+values from OpenNext's generated env module, so your workstation keys are not silently
+packaged for deployment. No live AI is required for tests.
+
+**Further hardening:** add [Turnstile](https://developers.cloudflare.com/turnstile/get-started/)
+with server-side token verification, authentication or Cloudflare Access if you need more
+than a small anonymous trial. Turnstile is not enabled by default and is not a replacement
+for the strict request caps. Existing dependency advisories still need maintenance.
 
 ## Credits, media and licensing
 
@@ -316,7 +481,7 @@ notices above are not a new license for DrawCover. Ask the maintainer about reus
 
 ## Contributing
 
-Found a rough edge? [Open an issue](https://github.com/oliverseges/DrawSound/issues)
+Found a rough edge? [Open an issue](https://github.com/oliverseges/DrawCover/issues)
 with reproduction steps, browser/viewport, provider/model names and a screenshot if useful.
 **Never include API keys, `.env`, authenticated request dumps or private drawings.**
 For changes, keep the drawing screen minimal, preserve keyboard/reduced-motion behavior,

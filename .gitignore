@@ -46,3 +46,7 @@ playwright-report/
 .playwright-cli/
 .playwright/
 /output/playwright/
+/.open-next/
+/.wrangler/
+.dev.vars*
+cloudflare-secrets.json

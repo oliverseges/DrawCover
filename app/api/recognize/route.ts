@@ -24,6 +24,9 @@ function fail(code: RecognizeErrorCode, status: number) {
 }
 
 export async function POST(request: Request) {
+  if (process.env.DRAWCOVER_HOSTED === "true") {
+    return NextResponse.json({ message: "Legacy AI generation is disabled on this public demo." }, { status: 503 });
+  }
   let image: unknown;
   try {
     image = (await request.json())?.image;

@@ -28,7 +28,7 @@ const album = {
 
 async function draw(page: Page) {
   await page.goto("/");
-  const go = page.getByRole("button", { name: "GO", exact: true });
+  const go = page.getByRole("button", { name: "PRESS RECORD", exact: true });
   await expect(go).toBeDisabled();
   const box = (await page.getByTestId("drawing-canvas").boundingBox())!;
   const toolbarBox = (await page.getByRole("toolbar").boundingBox())!;
@@ -70,7 +70,7 @@ test("drawing becomes eight tracks, autoplays first, and lazily caches another",
   });
   await draw(page);
   await expect(page.getByText("sun", { exact: true })).toHaveCount(0);
-  await page.getByRole("button", { name: "GO", exact: true }).click();
+  await page.getByRole("button", { name: "PRESS RECORD", exact: true }).click();
   await expect(page.getByRole("heading", { name: album.title })).toBeVisible();
   await expect(page.getByRole("button", { name: `Flip album artwork for ${album.title} to back cover` })).toBeVisible();
   await expect(page.getByRole("list", { name: "Tracklist" }).getByRole("listitem")).toHaveCount(8);
@@ -96,7 +96,7 @@ test("blocked autoplay retains visible player, track failure is isolated, fallba
     ? route.fulfill({ status: 502, json: { message: "Music service unavailable." } })
     : route.fulfill({ json: { dataUrl: audio, model: "mock" } }));
   await draw(page);
-  await page.getByRole("button", { name: "GO", exact: true }).click();
+  await page.getByRole("button", { name: "PRESS RECORD", exact: true }).click();
   await expect(page.getByText("Your track is ready. Press play to listen.")).toBeVisible();
   await expect(page.getByLabel("Album audio player")).toHaveAttribute("controls", "");
   await expect(page.getByText(/AI artwork was unavailable/)).toBeVisible();
@@ -111,11 +111,118 @@ test("blocked autoplay retains visible player, track failure is isolated, fallba
 test("album failure keeps the drawing and allows a deliberate retry", async ({ page }) => {
   await page.route("**/api/drawcover", (route) => route.fulfill({ status: 502, json: { message: "The studio is unavailable." } }));
   await draw(page);
-  await page.getByRole("button", { name: "GO", exact: true }).click();
+  await page.getByRole("button", { name: "PRESS RECORD", exact: true }).click();
   await expect(page.getByRole("alert").filter({ hasText: "The studio is unavailable." })).toBeVisible();
   await expect(page.getByTestId("drawing-canvas")).toBeVisible();
-  await expect(page.getByRole("button", { name: "GO", exact: true })).toBeEnabled();
+  await expect(page.getByRole("button", { name: "PRESS RECORD", exact: true })).toBeEnabled();
 });
+
+test("a server cooldown shows a Sonner break toast with the actual remaining time", async ({ page }) => {
+  await page.route("**/api/drawcover", (route) => route.fulfill({
+    status: 429, headers: { "Retry-After": "660" },
+    json: { reason: "cooldown", retryAfterSeconds: 660, message: "Time for a break." },
+  }));
+  await draw(page);
+  await page.getByRole("button", { name: "PRESS RECORD", exact: true }).click();
+  const toast = page.locator("[data-sonner-toast]");
+  await expect(toast).toContainText("Time for a break");
+  await expect(toast).toContainText("11 minutes");
+  await expect(page.locator(".studio-error")).toHaveCount(0);
+  await expect(page.getByTestId("drawing-canvas")).toBeVisible();
+});
+
+test("shared daily exhaustion is not presented as a personal cooldown", async ({ page }) => {
+  await setup(page);
+  await page.route("**/api/drawcover/track", (route) => route.fulfill({
+    status: 429, headers: { "Retry-After": "3600" },
+    json: { reason: "daily_limit", retryAfterSeconds: 3600, message: "Today's allowance is used up." },
+  }));
+  await draw(page);
+  await page.getByRole("button", { name: "PRESS RECORD", exact: true }).click();
+  const toast = page.locator("[data-sonner-toast]");
+  await expect(toast).toContainText("The shared demo allowance is used up");
+  await expect(toast).toContainText("not a personal cooldown");
+  await expect(page.locator(".track-error")).toHaveCount(0);
+});
+
+test("a stalled first-track body times out, then Retry plays the cached response", async ({ page }) => {
+  await setup(page);
+  await page.addInitScript(() => {
+    const original = window.fetch.bind(window);
+    let first = true;
+    window.fetch = (...args) => {
+      if (String(args[0]).endsWith("/api/drawcover/track") && first) {
+        first = false;
+        return Promise.resolve(new Response(new ReadableStream(), { status: 200 }));
+      }
+      return original(...args);
+    };
+  });
+  let requests = 0;
+  await page.route("**/api/drawcover/track", route => {
+    requests++;
+    return route.fulfill({ json: { dataUrl: audio, model: "mock" } });
+  });
+  await draw(page);
+  await page.clock.install();
+  await page.getByRole("button", { name: "PRESS RECORD", exact: true }).click();
+  await expect(page.getByText("MAKING", { exact: true })).toBeVisible();
+  await page.clock.fastForward(75_001);
+  await expect(page.locator(".track-error")).toContainText("connection timed out");
+  expect(requests).toBe(0);
+  await page.getByRole("button", { name: "Play track 1: First Light" }).click();
+  await expect(page.locator(".track-error")).toHaveCount(0);
+  await expect.poll(() => page.evaluate(() => (window as unknown as { __plays: number }).__plays)).toBe(1);
+  expect(requests).toBe(1);
+});
+
+for (const scheme of ["light", "dark"] as const) {
+  test(`daily-limit toast remains readable and dismissible in ${scheme} system mode`, async ({ page }) => {
+    await page.emulateMedia({ colorScheme: scheme });
+    await page.route("**/api/drawcover", route => route.fulfill({
+      status: 429, json: { reason: "daily_limit", retryAfterSeconds: 48_480 },
+    }));
+    await draw(page);
+    await page.clock.install();
+    await page.getByRole("button", { name: "PRESS RECORD", exact: true }).click();
+    const toast = page.locator("[data-sonner-toast]");
+    await expect(toast).toContainText("13h 28m");
+    const ratios = await toast.evaluate(element => {
+      const canvas = document.createElement("canvas");
+      canvas.width = canvas.height = 1;
+      const context = canvas.getContext("2d")!;
+      const rgb = (color: string) => {
+        context.clearRect(0, 0, 1, 1);
+        context.fillStyle = color;
+        context.fillRect(0, 0, 1, 1);
+        return Array.from(context.getImageData(0, 0, 1, 1).data).slice(0, 3);
+      };
+      const luminance = (values: number[]) => values.map(value => {
+        const channel = value / 255;
+        return channel <= .04045 ? channel / 12.92 : ((channel + .055) / 1.055) ** 2.4;
+      }).reduce((sum, channel, index) => sum + channel * [.2126, .7152, .0722][index], 0);
+      const background = rgb(getComputedStyle(element).backgroundColor);
+      return ["[data-title]", "[data-description]"].map(selector => {
+        const style = getComputedStyle(element.querySelector(selector)!);
+        const alpha = Number(style.opacity);
+        const foreground = rgb(style.color).map((value, index) => value * alpha + background[index] * (1 - alpha));
+        const a = luminance(background), b = luminance(foreground);
+        return (Math.max(a, b) + .05) / (Math.min(a, b) + .05);
+      });
+    });
+    expect(ratios[0]).toBeGreaterThanOrEqual(4.5);
+    expect(ratios[1], await toast.evaluate(element => JSON.stringify({
+      toast: element.className, parent: element.parentElement?.className,
+      description: getComputedStyle(element.querySelector("[data-description]")!).color,
+      background: getComputedStyle(element).backgroundColor,
+      scoped: element.matches(".toaster [data-sonner-toast][data-styled=true]"),
+    }))).toBeGreaterThanOrEqual(4.5);
+    await page.clock.fastForward(30_000);
+    await expect(toast).toBeVisible();
+    await toast.getByRole("button", { name: /close/i }).click();
+    await expect(toast).toHaveCount(0);
+  });
+}
 
 test("physical cover has title and artist, flips by keyboard and keeps playback outside", async ({ page }) => {
   await setup(page);
@@ -125,7 +232,7 @@ test("physical cover has title and artist, flips by keyboard and keeps playback 
     return route.fulfill({ json: { dataUrl: audio, model: "mock" } });
   });
   await draw(page);
-  await page.getByRole("button", { name: "GO", exact: true }).click();
+  await page.getByRole("button", { name: "PRESS RECORD", exact: true }).click();
   await expect(page.locator(".cover-front-title")).toHaveText(album.title);
   await expect(page.locator(".cover-artist")).toHaveText(album.artist);
   await expect(page.locator(".album-jacket")).toHaveAttribute("data-renderer", "three", { timeout: 20_000 });
@@ -151,7 +258,7 @@ test("reduced motion bypasses GPU effects and flips without 3D motion on mobile"
   await setup(page, true);
   await page.route("**/api/drawcover/track", (route) => route.fulfill({ json: { dataUrl: audio, model: "mock" } }));
   await draw(page);
-  await page.getByRole("button", { name: "GO", exact: true }).click();
+  await page.getByRole("button", { name: "PRESS RECORD", exact: true }).click();
   await expect(page.getByRole("heading", { name: album.title })).toBeVisible();
   await expect(page.locator(".album-embers canvas, .cover-particles canvas, .track-glass canvas, .physical-album-canvas")).toHaveCount(0);
   await page.getByRole("button", { name: `Flip album artwork for ${album.title} to back cover` }).click();
@@ -180,7 +287,7 @@ test("unavailable WebGL retains static covers and decorative-only back tracklist
   await setup(page, true);
   await page.route("**/api/drawcover/track", (route) => route.fulfill({ json: { dataUrl: audio, model: "mock" } }));
   await draw(page);
-  await page.getByRole("button", { name: "GO", exact: true }).click();
+  await page.getByRole("button", { name: "PRESS RECORD", exact: true }).click();
   const jacket = page.locator(".album-jacket");
   await expect(jacket).toHaveAttribute("data-renderer", "2d");
   await jacket.click();
@@ -194,7 +301,7 @@ test("album fits desktop and laptop viewport heights without document scrolling"
   await setup(page, true);
   await page.route("**/api/drawcover/track", (route) => route.fulfill({ json: { dataUrl: audio, model: "mock" } }));
   await draw(page);
-  await page.getByRole("button", { name: "GO", exact: true }).click();
+  await page.getByRole("button", { name: "PRESS RECORD", exact: true }).click();
   await expect(page.getByRole("heading", { name: album.title })).toBeVisible();
   const measurements = [];
   for (const [width, height] of [[1280, 720], [1366, 768], [1440, 900], [1920, 1080]]) {

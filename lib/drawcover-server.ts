@@ -6,6 +6,7 @@ import { MissingApiKeyError, recognizeDrawing } from "@/lib/gemini";
 import { generateAlbumCover, openRouterImageModel } from "@/lib/drawcover-image";
 import { DrawCoverConfigError, drawCoverConfig, providerKey, type DrawCoverProvider } from "@/lib/drawcover-config";
 import type { Album, DrawCoverTrack } from "@/lib/drawcover";
+import { HostedDemoError, hostedAlbum, hostedGeneration, isHostedDemo } from "@/lib/drawcover-hosted";
 
 const MAX_IMAGE_BYTES = 4 * 1024 * 1024;
 const MAX_OUTPUT_BYTES = 2 * 1024 * 1024;
@@ -18,7 +19,7 @@ const MUSIC_TIMEOUT = 60_000;
 const PNG_SIGNATURE = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
 
 export class DrawCoverError extends Error {
-  constructor(public status: number, message: string) {
+  constructor(public status: number, message: string, public reason?: string, public retryAfterSeconds?: number) {
     super(message);
   }
 }
@@ -80,6 +81,7 @@ function cached<T>(
 
 function safeError(error: unknown): DrawCoverError {
   if (error instanceof DrawCoverError) return error;
+  if (error instanceof HostedDemoError) return new DrawCoverError(error.status, error.message, error.reason, error.retryAfterSeconds);
   if (error instanceof DrawCoverConfigError) return new DrawCoverError(503, error.message);
   if (error instanceof MissingApiKeyError) {
     return new DrawCoverError(503, "DrawCover isn't configured. A Gemini API key is required.");
@@ -93,8 +95,11 @@ function safeError(error: unknown): DrawCoverError {
 export function drawCoverErrorResponse(error: unknown): Response {
   const failure = safeError(error);
   return Response.json(
-    { message: failure.message },
-    { status: failure.status, headers: { "Cache-Control": "no-store" } },
+    { message: failure.message, reason: failure.reason, retryAfterSeconds: failure.retryAfterSeconds },
+    {
+      status: failure.status,
+      headers: { "Cache-Control": "no-store", ...(failure.status === 429 ? { "Retry-After": String(failure.retryAfterSeconds ?? 60) } : {}) },
+    },
   );
 }
 
@@ -286,7 +291,7 @@ async function createAlbum(base64: string, config: ReturnType<typeof drawCoverCo
         provider: { require_parameters: true, allow_fallbacks: false },
       }),
       signal: AbortSignal.timeout(GEMINI_TIMEOUT),
-      redirect: "error", cache: "no-store",
+      redirect: "manual", cache: "no-store",
     }), GEMINI_TIMEOUT);
     if (!response.ok) {
       void response.body?.cancel().catch(() => {});
@@ -313,9 +318,14 @@ async function createAlbum(base64: string, config: ReturnType<typeof drawCoverCo
 export async function generateAlbum(input: unknown): Promise<Album> {
   const base64 = drawingBase64(input);
   const config = drawCoverConfig();
+  providerKey(config.metadataProvider);
   const key = createHash("sha256").update(base64).update(JSON.stringify(config)).update(openRouterImageModel())
     .update(JSON.stringify([!!process.env.GEMINI_API_KEY?.trim(), !!process.env.OPENROUTER_API_KEY?.trim()])).digest("hex");
-  return (await cached(albums, key, MAX_ALBUMS, 2, () => createAlbum(base64, config))).album;
+  const create = () => createAlbum(base64, config);
+  if (isHostedDemo()) {
+    return (await hostedGeneration("album", `album:${key}`, create, safeError, (value) => value.album.id)).album;
+  }
+  return (await cached(albums, key, MAX_ALBUMS, 2, create)).album;
 }
 
 function parseAudio(raw: string): string {
@@ -364,7 +374,7 @@ async function createTrack(album: Album, index: number, provider: DrawCoverProvi
           stream: true,
         }),
         signal: controller.signal,
-        redirect: "error",
+        redirect: "manual",
         cache: "no-store",
       });
       if (!response.ok) {
@@ -409,12 +419,18 @@ async function createTrack(album: Album, index: number, provider: DrawCoverProvi
   }
 }
 
-export function generateAlbumTrack(input: unknown): Promise<DrawCoverTrack> {
+export async function generateAlbumTrack(input: unknown): Promise<DrawCoverTrack> {
   const parsed = z.object({
     albumId: z.uuid(),
     trackIndex: z.number().int().min(0).max(7),
   }).strict().safeParse(input);
   if (!parsed.success) throw new DrawCoverError(400, "A valid album ID and track index (0–7) are required.");
+  if (isHostedDemo()) {
+    const stored = await hostedAlbum<StoredAlbum>(parsed.data.albumId);
+    providerKey(stored.musicProvider);
+    return hostedGeneration("track", `track:${stored.album.id}:${parsed.data.trackIndex}`,
+      () => createTrack(stored.album, parsed.data.trackIndex, stored.musicProvider), safeError);
+  }
   prune(albums);
   const stored = [...albums.values()].find((entry) => entry.value?.album.id === parsed.data.albumId)?.value;
   if (!stored) throw new DrawCoverError(404, "This album is unavailable or expired. Create the album again.");

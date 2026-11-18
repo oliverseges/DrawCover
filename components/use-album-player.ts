@@ -1,7 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { Album } from "@/lib/drawcover";
+import type { Album, DrawCoverTrack } from "@/lib/drawcover";
+import { generationRequest } from "@/lib/generation-request";
+import { showGenerationLimit } from "@/components/generation-limit-toast";
 
 type TrackState = { status: "loading" | "ready" | "error"; message?: string };
 
@@ -27,12 +29,18 @@ export function useAlbumPlayer(album: Album | null) {
       let dataUrl = cache.current.get(index);
       if (!dataUrl) {
         setTracks((old) => ({ ...old, [index]: { status: "loading" } }));
-        const response = await fetch("/api/drawcover/track", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ albumId: album.id, trackIndex: index }),
-        });
-        const body = await response.json();
+        const { response, body } = await generationRequest<DrawCoverTrack>(
+          "/api/drawcover/track", { albumId: album.id, trackIndex: index }, 75_000,
+        );
+        if (currentVersion !== version.current) return;
+        if (showGenerationLimit(response, body)) {
+          setTracks((old) => {
+            const next = { ...old };
+            delete next[index];
+            return next;
+          });
+          return;
+        }
         if (!response.ok) throw new Error(body.message || "This track couldn't be generated.");
         dataUrl = body.dataUrl;
         if (!dataUrl?.startsWith("data:audio/")) throw new Error("The track returned no playable audio.");

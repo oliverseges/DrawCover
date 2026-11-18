@@ -176,7 +176,7 @@ async function openRouterImage(base64: string, prompt: string, model: string): P
         provider: { allow_fallbacks: false },
       }),
       signal,
-      redirect: "error",
+      redirect: "manual",
       cache: "no-store",
     });
     if (!response.ok) {
@@ -209,6 +209,7 @@ async function openRouterImage(base64: string, prompt: string, model: string): P
 }
 
 export function openRouterImageModel(): string {
+  if (process.env.DRAWCOVER_HOSTED === "true") return DEFAULT_OPENROUTER_IMAGE_MODEL;
   return process.env.OPENROUTER_IMAGE_MODEL?.trim() || DEFAULT_OPENROUTER_IMAGE_MODEL;
 }
 

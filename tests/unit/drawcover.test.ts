@@ -1,12 +1,15 @@
 // @vitest-environment node
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { recognizeDrawing, generateContent, constructAi } = vi.hoisted(() => ({
+const { recognizeDrawing, generateContent, constructAi, cloudflareContext } = vi.hoisted(() => ({
   recognizeDrawing: vi.fn(),
   generateContent: vi.fn(),
   constructAi: vi.fn(),
+  cloudflareContext: vi.fn(),
 }));
 
+vi.mock("@opennextjs/cloudflare", () => ({ getCloudflareContext: cloudflareContext }));
+vi.mock("@/lib/drawcover-local-limit", () => ({ localGenerationLimit: () => null }));
 vi.mock("@/lib/gemini", () => ({
   DEFAULT_MODEL: "gemini-3.5-flash-lite",
   MissingApiKeyError: class extends Error {},
@@ -48,6 +51,7 @@ beforeEach(async () => {
   vi.spyOn(console, "warn").mockImplementation(() => {});
   vi.stubEnv("GEMINI_API_KEY", "private-gemini-key");
   vi.stubEnv("OPENROUTER_API_KEY", "private-music-key");
+  vi.stubEnv("DRAWCOVER_HOSTED", "");
   vi.stubEnv("GEMINI_MODEL", "");
   vi.stubEnv("DRAWCOVER_METADATA_MODEL", "");
   vi.stubEnv("DRAWCOVER_IMAGE_MODEL", "");
@@ -85,6 +89,55 @@ async function album() {
 }
 
 describe("DrawCover album endpoint", () => {
+  it("uses shared hosted albums/tracks after module reloads, with OpenRouter-only calls", async () => {
+    vi.stubEnv("DRAWCOVER_HOSTED", "true");
+    const records = new Map<string, unknown>();
+    let stored: unknown;
+    const stateFetch = vi.fn(async (url: string, init?: RequestInit) => {
+      if (url.includes("/album?")) return Response.json(stored);
+      const body = JSON.parse(String(init?.body));
+      if (url.endsWith("/claim")) {
+        return Response.json(records.has(body.key) ? { cached: records.get(body.key) } : { lease: "reservation" });
+      }
+      if (url.endsWith("/complete")) {
+        records.set(body.key, body.value);
+        if (body.albumId) stored = body.value;
+      }
+      return Response.json({ ok: true });
+    });
+    cloudflareContext.mockReturnValue({
+      env: { DRAWCOVER_STATE: { idFromName: () => "one-global-object", get: () => ({ fetch: stateFetch }) } },
+    });
+    fetcher.mockImplementation((_url, init) => {
+      const body = JSON.parse(init.body);
+      if (body.response_format) return Promise.resolve(Response.json({ choices: [{ message: { content: JSON.stringify(metadata()) } }] }));
+      if (body.modalities?.includes("image")) return Promise.resolve(Response.json({
+        choices: [{ message: { images: [{ image_url: { url: IMAGE } }] } }],
+      }));
+      return Promise.resolve(sse());
+    });
+    const result = await album();
+    vi.resetModules();
+    trackPost = (await import("@/app/api/drawcover/track/route")).POST;
+    const first = await trackPost(request({ albumId: result.id, trackIndex: 0 }, "/track"));
+    expect(first.status).toBe(200);
+    const second = await trackPost(request({ albumId: result.id, trackIndex: 0 }, "/track"));
+    expect(await second.json()).toEqual(await first.json());
+    expect(fetcher).toHaveBeenCalledTimes(3);
+    expect(fetcher.mock.calls.every(([url]) => url === "https://openrouter.ai/api/v1/chat/completions")).toBe(true);
+    expect(recognizeDrawing).not.toHaveBeenCalled();
+    expect(generateContent).not.toHaveBeenCalled();
+  });
+
+  it("fails closed if hosted storage is unavailable, without starting a paid request", async () => {
+    vi.stubEnv("DRAWCOVER_HOSTED", "true");
+    cloudflareContext.mockImplementation(() => { throw new Error("Binding unavailable"); });
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    expect((await albumPost(request({ image: IMAGE }))).status).toBe(503);
+    expect(fetcher).not.toHaveBeenCalled();
+    expect(log).toHaveBeenCalledWith("[DrawCover] Shared public-demo state is unavailable.");
+  });
+
   it("tries OpenRouter image editing before drawing fallback and reports the actual image model", async () => {
     generateContent.mockImplementation(({ model }: { model: string }) =>
       model.includes("image")
@@ -173,7 +226,7 @@ describe("DrawCover album endpoint", () => {
       provider: { allow_fallbacks: false },
       stream: false,
     });
-    expect(fetcher.mock.calls[0][1].redirect).toBe("error");
+    expect(fetcher.mock.calls[0][1].redirect).toBe("manual");
     expect(fetcher).toHaveBeenCalledTimes(1);
     expect(generateContent).toHaveBeenCalledTimes(2);
   });
@@ -412,6 +465,15 @@ describe("DrawCover album endpoint", () => {
     expect(recognizeDrawing).not.toHaveBeenCalled();
   });
 
+  it("rejects a missing hosted key before reserving shared allowance", async () => {
+    vi.stubEnv("DRAWCOVER_HOSTED", "true");
+    vi.stubEnv("OPENROUTER_API_KEY", "");
+    const response = await albumPost(request({ image: IMAGE }));
+    expect(response.status).toBe(503);
+    expect(cloudflareContext).not.toHaveBeenCalled();
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
   describe("DrawCover provider choices", () => {
     const directMusic = () => Response.json({
       steps: [
@@ -555,7 +617,7 @@ describe("DrawCover lazy track endpoint", () => {
     expect(payload.messages[0].content).toContain("30 seconds");
     expect(payload.messages[0].content).toContain("Instrumental only: no lyrics, vocals, singing, speech or spoken narration.");
     expect(payload.messages[0].content).toContain("Orbit 1");
-    expect(options.redirect).toBe("error");
+    expect(options.redirect).toBe("manual");
     expect((await trackPost(request({ albumId: result.id, trackIndex: 1 }))).status).toBe(200);
     expect(fetcher).toHaveBeenCalledTimes(2);
   });

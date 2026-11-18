@@ -25,6 +25,18 @@ export function providerKey(selected: DrawCoverProvider): string {
 }
 
 export function drawCoverConfig() {
+  if (process.env.DRAWCOVER_HOSTED === "true") {
+    return {
+      metadataProvider: "openrouter" as const,
+      musicProvider: "openrouter" as const,
+      imageProvider: "openrouter" as const,
+      models: {
+        metadata: "google/gemini-3.5-flash-lite",
+        image: "gemini-3.1-flash-image",
+        music: "google/lyria-3-clip-preview",
+      },
+    };
+  }
   const metadataProvider = provider("DRAWCOVER_METADATA_PROVIDER", "gemini");
   const musicProvider = provider("DRAWCOVER_MUSIC_PROVIDER", "openrouter");
   const image = z.enum(["auto", "gemini", "openrouter", "drawing"])

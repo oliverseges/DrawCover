@@ -1,0 +1,35 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "drawcover",
+  "account_id": "e05d227a565c8a288fb8c7c0bdd8c463",
+  "main": "cloudflare/worker.ts",
+  "compatibility_date": "2026-11-18",
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+  "workers_dev": true,
+  "routes": [{ "pattern": "drawcover.oeng.dev", "custom_domain": true }],
+  "preview_urls": false,
+  "assets": {
+    "directory": ".open-next/assets",
+    "binding": "ASSETS"
+  },
+  "services": [
+    { "binding": "WORKER_SELF_REFERENCE", "service": "drawcover" }
+  ],
+  "durable_objects": {
+    "bindings": [{ "name": "DRAWCOVER_STATE", "class_name": "DrawCoverState" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["DrawCoverState"] }],
+  "ratelimits": [
+    { "name": "ALBUM_RATE_LIMITER", "namespace_id": "20481", "simple": { "limit": 2, "period": 60 } },
+    { "name": "TRACK_RATE_LIMITER", "namespace_id": "20482", "simple": { "limit": 8, "period": 60 } }
+  ],
+  "vars": {
+    "DRAWCOVER_HOSTED": "true",
+    "DRAWCOVER_METADATA_PROVIDER": "openrouter",
+    "DRAWCOVER_IMAGE_PROVIDER": "openrouter",
+    "DRAWCOVER_MUSIC_PROVIDER": "openrouter",
+    "DRAWCOVER_DAILY_ALBUM_LIMIT": "10",
+    "DRAWCOVER_DAILY_TRACK_LIMIT": "40"
+  },
+  "observability": { "enabled": true, "head_sampling_rate": 0.1 }
+}

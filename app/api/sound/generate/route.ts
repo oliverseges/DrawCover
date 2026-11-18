@@ -4,6 +4,9 @@ import { sanitizeSoundPhrase } from "@/lib/sound-presets";
 
 // POST so that a paid generation can only follow an explicit user action, never a prefetch or link.
 export async function POST(request: Request) {
+  if (process.env.DRAWCOVER_HOSTED === "true") {
+    return NextResponse.json({ message: "Legacy AI generation is disabled on this public demo." }, { status: 503 });
+  }
   const phrase = sanitizeSoundPhrase(new URL(request.url).searchParams.get("q"));
   if (phrase.length < 2) {
     return NextResponse.json({ error: "invalid_query", message: "Missing sound phrase." }, { status: 400 });

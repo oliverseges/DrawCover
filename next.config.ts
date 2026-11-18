@@ -1,9 +1,9 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
-  cacheComponents: true,
-  partialPrefetching: true,
+  // OpenNext's uncached static shell avoids Cache Components hanging in workerd.
+  cacheComponents: process.env.DRAWCOVER_CLOUDFLARE_BUILD !== "true",
+  partialPrefetching: process.env.DRAWCOVER_CLOUDFLARE_BUILD !== "true",
   turbopack: {
     rules: {
       "*.css": {
