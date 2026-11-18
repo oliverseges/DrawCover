@@ -73,7 +73,13 @@ async function main() {
     assert.equal((await capped.json()).reason, "daily_limit");
     assert.equal(calls, 3, "Global cap must reject before any provider call");
     assert.equal((await post("/api/drawcover", { invalid: true })).status, 400);
-    const cooldown = await post("/api/drawcover", { invalid: true });
+    let cooldown;
+    // A fixed-window rollover can occur after the first request. Invalid probes never reach AI.
+    for (let attempt = 0; attempt < 3; attempt++) {
+      cooldown = await post("/api/drawcover", { invalid: true });
+      if (cooldown.status === 429) break;
+      assert.equal(cooldown.status, 400);
+    }
     assert.equal(cooldown.status, 429);
     assert.equal((await cooldown.json()).reason, "cooldown");
     assert.equal(cooldown.headers.get("Retry-After"), "900");
