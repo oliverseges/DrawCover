@@ -397,7 +397,7 @@ values. It checks configuration, **not** provider credit balance or model access
   Object. Denied attempts do not extend it. A Sonner toast shows the actual remaining time;
   server 429 responses include `reason: "cooldown"`, `Retry-After` and `retryAfterSeconds`.
   The DO stores a hash of the network IP only for the cooldown, not the raw address.
-- Globally: **10 album generations + 40 track generations per UTC day**, reserved
+- Globally: **25 album generations + 40 track generations per UTC day**, reserved
   atomically in one named SQLite Durable Object before paid work. Failures count;
   cached results do not. These are **request caps, not guaranteed dollar spending limits**.
   At most one metadata call plus one image call per album, and one music call per track;

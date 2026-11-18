@@ -51,7 +51,7 @@ afterEach(() => {
 describe("shared public-demo generation store", () => {
   it("counts one normal album/listening flow once, with free cache reads, polling and in-flight retries", async () => {
     const { backend } = storage();
-    const store = new DemoStore(backend, { albums: "10", tracks: "40" });
+    const store = new DemoStore(backend, { albums: "25", tracks: "40" });
     await complete(store, albumKey(1), { title: "Record" });
     for (let index = 0; index < 8; index++) {
       const key = trackKey(index);
@@ -63,9 +63,21 @@ describe("shared public-demo generation store", () => {
     }
     for (let poll = 0; poll < 20; poll++) {
       const usage = await (await store.fetch(new Request("https://state/usage"))).json();
-      expect(usage).toMatchObject({ used: { album: 1, track: 8 }, limits: { album: 10, track: 40 } });
+      expect(usage).toMatchObject({ used: { album: 1, track: 8 }, limits: { album: 25, track: 40 } });
       expect((await claim(store, albumKey(1))).status).toBe(200);
     }
+  });
+
+  it("raises the configured ceiling without resetting existing daily reservations", async () => {
+    const { backend } = storage();
+    const original = new DemoStore(backend, { albums: "10", tracks: "40" });
+    for (let index = 0; index < 10; index++) await complete(original, albumKey(index), { title: `Record ${index}` });
+    expect((await claim(original, albumKey(10))).status).toBe(429);
+    const updated = new DemoStore(backend, { albums: "25", tracks: "40" });
+    expect(await (await updated.fetch(new Request("https://state/usage"))).json()).toMatchObject({
+      used: { album: 10, track: 0 }, limits: { album: 25, track: 40 },
+    });
+    expect((await claim(updated, albumKey(10))).status).toBe(200);
   });
 
   it("shares a 15-minute network cooldown across instances without extending denied attempts", async () => {

@@ -28,7 +28,7 @@
     "DRAWCOVER_METADATA_PROVIDER": "openrouter",
     "DRAWCOVER_IMAGE_PROVIDER": "openrouter",
     "DRAWCOVER_MUSIC_PROVIDER": "openrouter",
-    "DRAWCOVER_DAILY_ALBUM_LIMIT": "10",
+    "DRAWCOVER_DAILY_ALBUM_LIMIT": "25",
     "DRAWCOVER_DAILY_TRACK_LIMIT": "40"
   },
   "observability": { "enabled": true, "head_sampling_rate": 0.1 }
