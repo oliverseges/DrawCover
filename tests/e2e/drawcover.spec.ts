@@ -156,6 +156,25 @@ for (const reducedMotion of [false, true]) {
     await page.getByRole("button", { name: "PRESS RECORD", exact: true }).click();
     await expect(page.getByRole("button", { name: "Reveal verdict" })).toBeVisible();
     await expect(change).toBeDisabled();
+    if (!reducedMotion) {
+      await page.getByRole("button", { name: "Show full critic message" }).waitFor();
+      await expect(page.getByRole("button", { name: "Play current track" })).toBeEnabled();
+      await page.locator("audio").evaluate(audio => {
+        if (!(audio instanceof HTMLMediaElement)) throw new Error("Missing music player");
+        audio.dataset.pauseCalls = "0";
+        const pause = audio.pause.bind(audio);
+        audio.pause = () => { audio.dataset.pauseCalls = String(Number(audio.dataset.pauseCalls) + 1); pause(); };
+        audio.dispatchEvent(new Event("play"));
+      });
+      await expect(page.getByRole("button", { name: "Pause track" })).toBeVisible();
+      const text = page.locator(".critic-bubble > span");
+      const characters = (await text.textContent())!.length;
+      expect(characters).toBeLessThan((await page.locator(".critic-speech [role=status]").textContent())!.length);
+      await page.getByRole("button", { name: "Mute critic", exact: true }).click();
+      await expect(page.locator("audio")).toHaveAttribute("data-pause-calls", "0");
+      await expect(page.getByRole("button", { name: "Pause track" })).toBeVisible();
+      await expect.poll(async () => (await text.textContent())!.length).toBeGreaterThan(characters);
+    }
     await page.getByRole("button", { name: "Reveal verdict" }).click();
     await expect(page.getByRole("region", { name: "Critic's review" })).toContainText("9/10");
     await expect(page.getByText("Concept judging only. No audio listening.")).toBeVisible();
@@ -613,9 +632,23 @@ test("album fits desktop and laptop viewport heights without document scrolling"
       scrollHeight: document.documentElement.scrollHeight,
       innerHeight: window.innerHeight,
       overflowWidth: document.documentElement.scrollWidth > window.innerWidth,
+      tracks: (() => {
+        const list = document.querySelector(".track-glass")!;
+        return { scrollHeight: list.scrollHeight, clientHeight: list.clientHeight };
+      })(),
     }));
     expect(measured.scrollHeight).toBeLessThanOrEqual(measured.innerHeight);
     expect(measured.overflowWidth).toBe(false);
+    if (height >= 900) {
+      expect(measured.tracks.scrollHeight).toBe(measured.tracks.clientHeight);
+      expect(await page.locator(".track-glass").evaluate(element => {
+        const bounds = element.getBoundingClientRect();
+        return [...element.querySelectorAll(".track-button")].every(row => {
+          const box = row.getBoundingClientRect();
+          return box.top >= bounds.top && box.bottom <= bounds.bottom;
+        });
+      })).toBe(true);
+    }
     measurements.push({ width, ...measured });
   }
   console.log("Album viewport measurements:", JSON.stringify(measurements));
@@ -623,4 +656,47 @@ test("album fits desktop and laptop viewport heights without document scrolling"
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollHeight)).toBeGreaterThan(844);
   await page.getByLabel("Album audio player").scrollIntoViewIfNeeded();
   await expect(page.getByLabel("Album audio player")).toBeInViewport();
+});
+
+test("track rows keep scrolling only when a short album layout genuinely needs it", async ({ page }) => {
+  await page.setViewportSize({ width: 1000, height: 700 });
+  await setup(page, true);
+  const crowded = { ...album, title: "Where the Sun Sleeps Beyond the Last Lighthouse" };
+  await page.route("**/api/drawcover", route => route.fulfill({ json: crowded }));
+  await page.route("**/api/drawcover/track", route => route.fulfill({ json: { dataUrl: audio, model: "mock" } }));
+  await draw(page);
+  await page.getByRole("button", { name: "PRESS RECORD", exact: true }).click();
+  await page.getByRole("heading", { name: crowded.title }).waitFor();
+  const metrics = () => page.locator(".track-glass").evaluate(element => ({ scrollHeight: element.scrollHeight, clientHeight: element.clientHeight }));
+  expect((await metrics()).scrollHeight).toBeGreaterThan((await metrics()).clientHeight);
+  await page.getByRole("button", { name: "Play track 8: Until Tomorrow" }).scrollIntoViewIfNeeded();
+  await expect(page.getByRole("button", { name: "Play track 8: Until Tomorrow" })).toBeInViewport();
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect((await metrics()).scrollHeight).toBe((await metrics()).clientHeight);
+});
+
+test("the readable W/C wordmark overlaps subtly and the album gradient respects reduced motion", async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  await setup(page, true);
+  await page.route("**/api/drawcover/track", route => route.fulfill({ json: { dataUrl: audio, model: "mock" } }));
+  await draw(page);
+  await page.getByRole("button", { name: "PRESS RECORD", exact: true }).click();
+  await page.getByRole("heading", { name: album.title }).waitFor();
+  for (const width of [1280, 390]) {
+    await page.setViewportSize({ width, height: 900 });
+    await expect(page.locator(".wordmark")).toHaveText("DRAWCOVER");
+    const pair = await page.locator(".wordmark-pair").evaluate(element => {
+      const w = element.firstElementChild!.getBoundingClientRect();
+      const c = element.lastElementChild!.getBoundingClientRect();
+      return { overlap: w.right - c.left, cWidth: c.width, cut: getComputedStyle(element.lastElementChild!).clipPath };
+    });
+    expect(pair.overlap).toBeGreaterThan(0);
+    expect(pair.overlap).toBeLessThan(pair.cWidth * .4);
+    expect(pair.cut).not.toBe("none");
+  }
+  const transform = () => page.locator(".album-atmosphere").evaluate(element => getComputedStyle(element, "::before").transform);
+  const before = await transform();
+  await expect.poll(transform).not.toBe(before);
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await expect.poll(transform).toBe("none");
 });

@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { ArrowLeft, Brush, Circle, Eraser, LoaderCircle, Minus, PaintBucket, Pause, Play, Redo2, Square, Trash2, Undo2, Volume2, VolumeX } from "lucide-react";
 import { AlbumAmbient, AlbumTracklist } from "@/components/album-effects";
 import { AlbumJacket } from "@/components/album-jacket";
+import { AlbumWaveform } from "@/components/album-waveform";
 import { showGenerationLimit } from "@/components/generation-limit-toast";
 import { RecordingStatus } from "@/components/recording-status";
 import { generationRequest } from "@/lib/generation-request";
@@ -121,7 +122,7 @@ export function DrawCover({ criticMode = false }: { criticMode?: boolean }) {
   const criticPanel = criticMode ? <aside className={`critic-panel ${album ? "critic-result" : ""}`} aria-label="Your fictional music critic">
         <div className="critic-portrait">
           <CriticCharacter key={criticId} criticId={album?.criticReview?.criticId ?? criticId} palette={album?.palette} onReady={onCharacterReady} leaving={leaving || changingCritic} onChange={changeCritic} changeDisabled={loading || !!album || changingCritic || leaving} speaking={voice.speaking} reaction={reviewShown && album?.criticReview ? album.criticReview.score >= 7 ? "pleased" : "disappointed" : "neutral"} />
-          <button type="button" className="critic-sound" aria-label={voice.muted ? "Unmute critic" : "Mute critic"} aria-pressed={!voice.muted} title={voice.muted ? "Enable original character babble" : "Mute character babble"} onClick={() => { audioRef.current?.pause(); voice.toggle(); }}>{voice.muted ? <VolumeX size={15} /> : <Volume2 size={15} />}<span>Sound {voice.muted ? "off" : "on"}</span></button>
+          <button type="button" className="critic-sound" aria-label={voice.muted ? "Unmute critic" : "Mute critic"} aria-pressed={!voice.muted} title={voice.muted ? "Enable original character babble" : "Mute character babble"} onClick={voice.toggle}>{voice.muted ? <VolumeX size={15} /> : <Volume2 size={15} />}<span>Sound {voice.muted ? "off" : "on"}</span></button>
           <h2 className="critic-name">{CRITICS[album?.criticReview?.criticId ?? criticId].name}</h2>
         </div>
         <div className="critic-copy">
@@ -181,7 +182,7 @@ export function DrawCover({ criticMode = false }: { criticMode?: boolean }) {
           <AlbumAmbient palette={album.palette} />
           <header className="album-header">
             <button type="button" className="back-button" onClick={nextDrawing}><ArrowLeft size={16} /> {criticMode ? "Another round" : "New drawing"}</button>
-            <span className="wordmark">DRAWCOVER<span className="wordmark-dot" /></span>
+            <span className="wordmark"><span>DRA<span className="wordmark-pair"><span className="wordmark-w">W</span><span className="wordmark-c">C</span></span>OVER</span><span className="wordmark-dot" /></span>
             <span className="edition">ONE DRAWING. ONE RECORD.</span>
           </header>
           <section className="album-room" aria-label="Your generated album">
@@ -221,7 +222,7 @@ export function DrawCover({ criticMode = false }: { criticMode?: boolean }) {
                     else void audio.play().catch(() => setError("Audio couldn't play. Use the player controls to try again."));
                   }}>{trackLoading ? <LoaderCircle size={19} className="spin" /> : playing ? <Pause size={19} /> : <Play size={19} />}</button>
                 </div>
-                <div className="player-waveform" aria-hidden="true">{Array.from({ length: 36 }, (_, index) => <i key={index} style={{ "--bar-index": index, "--bar-height": `${18 + ((index * 17 + 7) % 38)}px` } as CSSProperties} />)}</div>
+                <AlbumWaveform audioRef={audioRef} playing={playing} />
                 <audio ref={audioRef} controls preload="none" aria-label="Album audio player" onPlay={() => { voice.stop(); setPlaying(true); setError(""); }} onPause={() => setPlaying(false)} onEnded={() => setPlaying(false)} onError={() => { setPlaying(false); setError("Audio playback failed. Select the track again to reload it."); }} />
                 {notice && <p className="play-notice" role="status">{notice}</p>}
                 {error && <p role="alert" className="track-error">{error}</p>}

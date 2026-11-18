@@ -20,6 +20,10 @@ The first **~30-second track** starts automatically; the other seven are made on
 you choose them. Flip the record, explore its printed back cover, and keep listening
 from the separate player.
 
+The player's bars follow the song audio, resting when playback is paused or silent.
+Tracks fit their rows naturally and scroll only when the available layout needs it.
+The album palette drifts gently in the background; reduced motion keeps it static.
+
 ### Critic mode
 
 The subtle bottom-right **Critic mode** link opens [/play](https://drawcover.oeng.dev/play).
