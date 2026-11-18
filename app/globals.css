@@ -354,17 +354,18 @@
   .critic-mode-link:hover { border-color: #24262170; color: #242621; }
   .critic-mode-link:focus-visible { outline: 2px solid #242621; outline-offset: 3px; }
   .critic-mode-link[aria-disabled=true] { opacity: .4; pointer-events: none; }
-  .critic-mode:not(.has-album) { display: grid; grid-template-columns: minmax(230px, 280px) minmax(0, 900px); justify-content: center; align-items: start; gap: 34px; padding: 24px 28px 70px; background: radial-gradient(ellipse at 5% 50%, #cbd9ce44, transparent 55%), #faf9f6; }
+  .critic-mode:not(.has-album) { display: grid; grid-template-columns: minmax(230px, 280px) minmax(0, 900px); justify-content: center; align-items: center; gap: 34px; padding: 24px 28px 70px; background: radial-gradient(ellipse at 5% 50%, #cbd9ce44, transparent 55%), #faf9f6; }
+  .critic-panel:not(.critic-result) { translate: 0 -16.5px; }
   .critic-mode .drawing-room { padding: 14px 0 0; gap: 20px; animation: critic-desk-arrive .36s cubic-bezier(.22, 1, .36, 1) both; }
   .critic-mode.critic-leaving .drawing-room { animation: critic-desk-leave .36s cubic-bezier(.4, 0, .6, 1) both; }
   @keyframes critic-desk-arrive { from { transform: translateX(-84px); } 80% { transform: translateX(3px); } to { transform: translateX(0); } }
   @keyframes critic-desk-leave { to { transform: translateX(-100px); } }
-  .critic-panel { position: relative; z-index: 2; padding-top: 10px; color: #242621; }
+  .critic-panel { position: relative; z-index: 2; color: #242621; }
   .critic-portrait { position: relative; width: 100%; max-width: 310px; margin: auto; }
-  .critic-sound { position: absolute; z-index: 3; bottom: 8px; right: 8px; display: flex; gap: 6px; align-items: center; border: 1px solid #24262125; background: #faf9f6; color: #484f43; border-radius: 100px; padding: 8px; cursor: pointer; font-size: 10px; }
+  .critic-sound { position: relative; z-index: 3; display: flex; gap: 6px; align-items: center; width: max-content; margin: 6px auto 0; border: 1px solid #24262125; background: #faf9f6; color: #484f43; border-radius: 100px; padding: 8px; cursor: pointer; font-size: 10px; }
   .critic-sound:focus-visible { outline: 2px solid #242621; outline-offset: 3px; }
   .critic-copy { padding: 14px 10px; max-width: 600px; }
-  .critic-copy .critic-name { font-size: 14px; line-height: 1.4; font-weight: 550; letter-spacing: .02em; margin: 6px 0 14px; }
+  .critic-name { font-size: 12px; line-height: 1.4; font-weight: 550; letter-spacing: .02em; margin: 8px 0 0; text-align: center; }
   .critic-panel:not(.critic-result) .critic-copy { text-align: center; }
   .critic-speech { position: relative; margin: 10px 0; }
   .critic-speech::before { content: ""; position: absolute; width: 12px; height: 12px; top: -6px; left: calc(50% - 6px); background: #fffef9; border-top: 1px solid #c9cbbb; border-left: 1px solid #c9cbbb; transform: rotate(45deg); }
@@ -373,9 +374,17 @@
   .critic-copy p { font-size: 13px; line-height: 1.65; }
   .critic-copy small { display: block; font-size: 10px; line-height: 1.7; color: #62685d; margin-top: 16px; }
   .critic-mode.has-album { height: auto; min-height: 100svh; display: block; }
-  .critic-result { display: grid; grid-template-columns: 220px minmax(0, 600px); gap: 28px; justify-content: center; max-width: 1100px; margin: 0 auto; padding: 20px 24px; color: #242621; background: #f0eee7; border-radius: 0 0 24px 24px; }
-  .critic-result .critic-copy { align-self: center; }
-  .critic-mode.has-album .album-room { min-height: 650px; }
+  .critic-result { display: flex; flex-direction: column; min-width: 0; min-height: 0; color: #edf2ef; }
+  .critic-result .critic-portrait { width: 160px; max-width: 100%; }
+  .critic-result .critic-copy { border-top: 1px solid #ffffff15; margin-top: 12px; padding: 12px 0; }
+  .critic-result .critic-bubble { background: color-mix(in srgb, var(--album-a) 16%, #10171b); color: #edf2ef; border-color: #ffffff25; box-shadow: none; font-size: 11px; }
+  .critic-result .critic-speech::before { background: color-mix(in srgb, var(--album-a) 16%, #10171b); border-color: #ffffff25; }
+  .critic-result .critic-sound { color: #e1e9e3; background: #ffffff08; border-color: #ffffff25; }
+  .critic-result .critic-copy small { color: #a4b0a7; }
+  .critic-result .critic-verdict-button { border-color: #ffffff30; background: #ffffff08; color: #edf2ef; }
+  .critic-result .critic-score span { color: #b6c1b9; }
+  .critic-result .critic-review h2 { font-size: 15px; }
+  .critic-result .critic-score strong { font-size: 48px; }
   .critic-verdict-button { border: 1px solid #242621; background: #242621; color: #fff; padding: 12px 19px; border-radius: 100px; font-size: 12px; cursor: pointer; margin-top: 15px; }
   .critic-copy .critic-score { display: flex; gap: 8px; align-items: baseline; margin: 12px 0; }
   .critic-score strong { font-size: 72px; line-height: 1; letter-spacing: -.08em; }
@@ -384,19 +393,25 @@
   .critic-review details { margin-top: 12px; font-size: 12px; }
   .critic-review summary { cursor: pointer; }
   .critic-review details p { margin-top: 8px; font-size: 11px; }
+  @media (min-width: 1000px) and (min-height: 700px) {
+    .critic-mode.has-album { height: 100dvh; min-height: 0; display: flex; flex-direction: column; }
+    .critic-mode.has-album .album-room { grid-template-columns: minmax(170px, .55fr) minmax(0, 1fr) minmax(0, 1.05fr); gap: clamp(20px, 2.5vw, 40px); }
+    .critic-result { height: 100%; max-height: 100%; overflow-y: auto; overflow-x: hidden; scrollbar-width: thin; scrollbar-color: #ffffff30 transparent; padding-right: 8px; }
+  }
   @media (max-width: 800px) {
     .critic-mode:not(.has-album) { display: block; padding: 8px 14px calc(88px + env(safe-area-inset-bottom, 0px)); }
     .critic-mode .critic-panel { display: grid; grid-template-columns: minmax(120px, 42%) minmax(0, 1fr); align-items: center; gap: 8px; padding: 0; }
     .critic-mode .critic-panel:not(.critic-result) { display: grid; grid-template-columns: 140px minmax(0, 1fr); width: 100%; margin: 0 auto; }
+    .critic-panel:not(.critic-result) { translate: none; }
     .critic-copy { padding: 8px 4px; }
     .critic-copy p { font-size: 11px; }
     .critic-copy small { font-size: 9px; margin-top: 10px; }
     .critic-mode .cover-canvas { width: min(100%, calc((100svh - 520px) * 4 / 3)); min-width: 202px; margin: 0; }
     .critic-mode .drawing-room { animation: none; }
-    .critic-mode.has-album .critic-result { padding: 8px 12px 20px; border-radius: 0; }
+    .critic-mode.has-album .critic-result { padding: 0; }
     .critic-result .critic-copy { padding-top: 22px; }
     .critic-result:has(.critic-review) { grid-template-columns: 120px minmax(0, 1fr); align-items: start; }
-    .critic-mode.has-album .album-room { min-height: 0; }
+    .critic-result .critic-portrait { width: 100%; }
     .critic-score strong { font-size: 50px; }
     .critic-review h2 { font-size: 16px; }
     .critic-sound span { display: none; }

@@ -76,6 +76,7 @@ function buildCritic(id: CriticId, resources: Resources) {
   const metal = material("#b9becb", 0.7, 0.3);
   const trousers = material(id === "mara" ? "#565b4c" : id === "jax" ? "#434452" : "#343a56");
   const sphere = new THREE.SphereGeometry(1, 24, 16);
+  const feet: THREE.Mesh[] = [];
   resources.geometries.add(sphere);
 
   function mesh(
@@ -144,7 +145,7 @@ function buildCritic(id: CriticId, resources: Resources) {
     link([side * 0.2, 1.35, 0], [footX, 0.33, 0.015], 0.17, trousers);
     const shoe = oval(id === "jax" ? accent : ink, [footX, 0.18, 0.12], [0.215, 0.17, 0.34]);
     shoe.rotation.y = side * -0.13;
-    oval(sole, [footX, 0.075, 0.14], [0.22, 0.065, 0.34]);
+    feet.push(oval(sole, [footX, 0.075, 0.14], [0.22, 0.065, 0.34]));
     link([footX - 0.1, 0.28, 0.29], [footX + 0.1, 0.28, 0.29], 0.018, cream);
   }
 
@@ -268,7 +269,31 @@ function buildCritic(id: CriticId, resources: Resources) {
       }
     }
   }
-  return { root, head, eyes, restingMouth, talkingMouth, leftArm, rightArm };
+  return { root, head, eyes, restingMouth, talkingMouth, leftArm, rightArm, feet };
+}
+
+/** Bounds of actual visible mesh vertices in normalized camera coordinates.
+ * Projecting a world-space AABB instead adds empty corners around rotated
+ * silhouettes, especially the record/pick, and produces an off-center actor.
+ */
+function projectActorBounds(root: THREE.Object3D, camera: THREE.Camera) {
+  root.updateWorldMatrix(true, true);
+  camera.updateMatrixWorld();
+  const viewProjection = new THREE.Matrix4().multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
+  const matrix = new THREE.Matrix4();
+  const vertex = new THREE.Vector3();
+  const point = new THREE.Vector2();
+  const bounds = new THREE.Box2();
+  root.traverseVisible((object) => {
+    if (!(object instanceof THREE.Mesh)) return;
+    const positions = object.geometry.getAttribute("position");
+    matrix.multiplyMatrices(viewProjection, object.matrixWorld);
+    for (let i = 0; i < positions.count; i++) {
+      vertex.fromBufferAttribute(positions, i).applyMatrix4(matrix);
+      bounds.expandByPoint(point.set(vertex.x, vertex.y));
+    }
+  });
+  return bounds;
 }
 
 function poseCritic(rig: Rig, id: CriticId, controls: Controls, seconds: number, animate: boolean) {
@@ -308,6 +333,8 @@ export function CriticCharacter({
   className,
   speaking = false,
   reaction = "neutral",
+  palette,
+  onReady,
 }: {
   criticId: CriticId;
   leaving?: boolean;
@@ -316,18 +343,32 @@ export function CriticCharacter({
   className?: string;
   speaking?: boolean;
   reaction?: Reaction;
+  palette?: readonly [string, string, string];
+  /** Once per critic, after a rendered model or visible unavailable fallback. */
+  onReady?: () => void;
 }) {
   const stageRef = useRef<HTMLDivElement>(null);
   const canvasHostRef = useRef<HTMLDivElement>(null);
   const unavailableRef = useRef<HTMLParagraphElement>(null);
   const controls = useRef<Controls>({ speaking, reaction, leaving });
   const wakeRef = useRef<(() => void) | null>(null);
+  const onReadyRef = useRef(onReady);
+  const readyCriticRef = useRef<CriticId | null>(null);
   const portrait = portraits[criticId];
+  // Compare color values, not the parent's tuple identity, to avoid rebuilding
+  // WebGL resources for every speaking/reaction render.
+  const paletteA = palette?.[0];
+  const paletteB = palette?.[1];
+  const paletteC = palette?.[2];
 
   useEffect(() => {
     controls.current = { speaking, reaction, leaving };
     wakeRef.current?.();
   }, [speaking, reaction, leaving]);
+
+  useEffect(() => {
+    onReadyRef.current = onReady;
+  }, [onReady]);
 
   useEffect(() => {
     const host = canvasHostRef.current;
@@ -352,8 +393,15 @@ export function CriticCharacter({
     let rig: Rig;
     let scene: THREE.Scene;
     let camera: THREE.OrthographicCamera;
-    let shadow: THREE.DirectionalLightShadow | undefined;
-    let headBounds: THREE.Box3;
+    let ground: THREE.Mesh;
+    const feetCenter = new THREE.Vector3();
+    const footPosition = new THREE.Vector3();
+
+    function reportReady() {
+      if (readyCriticRef.current === criticId) return;
+      readyCriticRef.current = criticId;
+      onReadyRef.current?.();
+    }
 
     function release() {
       if (disposed) return;
@@ -367,7 +415,6 @@ export function CriticCharacter({
       canvas.removeEventListener("webglcontextlost", contextLost);
       resources.geometries.forEach((geometry) => geometry.dispose());
       resources.materials.forEach((surface) => surface.dispose());
-      shadow?.dispose();
       renderer?.dispose();
       // Each setup owns a fresh canvas; Strict Mode never reuses a lost context.
       renderer?.forceContextLoss();
@@ -383,6 +430,7 @@ export function CriticCharacter({
       release();
       stage!.hidden = true;
       unavailable!.hidden = false;
+      reportReady();
     }
 
     function contextLost(event: Event) {
@@ -411,20 +459,31 @@ export function CriticCharacter({
           const size = renderer.getSize(new THREE.Vector2());
           if (size.x !== width || size.y !== height) renderer.setSize(width, height, false);
           poseCritic(rig, criticId, controls.current, now / 1000, animate);
+          const actorBounds = projectActorBounds(rig.root, camera);
+          const center = actorBounds.getCenter(new THREE.Vector2());
+          // Shift the orthographic view, not the model/pose. Include all props,
+          // but never the contact shadow, when centering the full silhouette.
+          const offsetX = center.x * halfWidth;
+          const offsetY = center.y * halfHeight;
+          camera.left += offsetX;
+          camera.right += offsetX;
+          camera.top += offsetY;
+          camera.bottom += offsetY;
+          camera.updateProjectionMatrix();
+          feetCenter.set(0, 0, 0);
+          for (const foot of rig.feet) feetCenter.add(foot.getWorldPosition(footPosition));
+          feetCenter.divideScalar(rig.feet.length);
+          ground.position.set(feetCenter.x, 0.004, feetCenter.z);
           if (dirty) {
-            rig.head.updateWorldMatrix(true, true);
-            const bounds = headBounds.clone().applyMatrix4(rig.head.matrixWorld);
-            const top = new THREE.Vector3(
-              (bounds.min.x + bounds.max.x) / 2,
-              bounds.max.y,
-              (bounds.min.z + bounds.max.z) / 2,
-            ).project(camera);
+            const bounds = projectActorBounds(rig.head, camera);
             // Reserve the entire 44px touch target above the hair. Reposition
             // only on state/size changes, never chase the breathing animation.
-            stage!.parentElement?.style.setProperty("--critic-head-x", `${stage!.offsetLeft + (top.x + 1) * width / 2}px`);
-            stage!.parentElement?.style.setProperty("--critic-head-y", `${Math.max(0, stage!.offsetTop + (1 - top.y) * height / 2 - 46)}px`);
+            stage!.parentElement?.style.setProperty("--critic-head-y", `${Math.max(0, stage!.offsetTop + (1 - bounds.max.y) * height / 2 - 46)}px`);
           }
           renderer.render(scene, camera);
+          // Measured vertical opening in model units, sampled only after a
+          // successful render. This is the mesh transform, not speaking state.
+          canvas.dataset.mouthOpen = (rig.talkingMouth.visible ? rig.talkingMouth.scale.y * 2 : 0).toFixed(4);
           stage!.dataset.rendered = "true";
           lastPaint = now;
           dirty = false;
@@ -432,6 +491,7 @@ export function CriticCharacter({
           fail();
           return;
         }
+        reportReady();
       }
       if (animate) frameId = requestAnimationFrame(frame);
     }
@@ -453,41 +513,54 @@ export function CriticCharacter({
       renderer.setClearColor(0x000000, 0);
       renderer.outputColorSpace = THREE.SRGBColorSpace;
       renderer.toneMapping = THREE.ACESFilmicToneMapping;
-      renderer.toneMappingExposure = 1.18;
-      renderer.shadowMap.enabled = true;
-      renderer.shadowMap.type = THREE.PCFShadowMap;
+      const themed = paletteA !== undefined;
+      renderer.toneMappingExposure = themed ? 1.06 : 1.18;
       scene = new THREE.Scene();
       camera = new THREE.OrthographicCamera(-2, 2, 2.19, -2.19, 0.1, 30);
       camera.position.set(0, 3.2, 8);
       camera.lookAt(0, 1.94, 0);
       camera.updateMatrixWorld();
       rig = buildCritic(criticId, resources);
-      rig.head.updateWorldMatrix(true, true);
-      headBounds = new THREE.Box3().setFromObject(rig.head).applyMatrix4(rig.head.matrixWorld.clone().invert());
       scene.add(rig.root);
-      scene.add(new THREE.HemisphereLight("#f4f1ff", "#8d8390", 2.6));
-      const key = new THREE.DirectionalLight("#fff1da", 3.5);
+      const ambientTint = new THREE.Color("#f4f1ff");
+      const groundTint = new THREE.Color("#8d8390");
+      const fillTint = new THREE.Color("#b5d7ee");
+      const contactTint = new THREE.Color(themed ? "#74809d" : "#302a38");
+      if (themed) {
+        ambientTint.lerp(new THREE.Color(paletteA), 0.18);
+        groundTint.lerp(new THREE.Color(paletteC), 0.25);
+        fillTint.lerp(new THREE.Color(paletteB), 0.3);
+        contactTint.lerp(new THREE.Color(paletteC), 0.3);
+      }
+      scene.add(new THREE.HemisphereLight(ambientTint, groundTint, themed ? 2.1 : 2.6));
+      // Neutral key preserves outfit/prop clues; only ambient/fill are tinted.
+      const key = new THREE.DirectionalLight("#fff1da", themed ? 3.2 : 3.5);
       key.position.set(-3, 6, 5);
-      key.castShadow = true;
-      shadow = key.shadow;
-      key.shadow.mapSize.set(512, 512);
-      key.shadow.camera.left = -2.5;
-      key.shadow.camera.right = 2.5;
-      key.shadow.camera.top = 4;
-      key.shadow.camera.bottom = -2;
-      key.shadow.normalBias = 0.035;
-      key.shadow.bias = -0.0004;
       scene.add(key);
-      const rim = new THREE.DirectionalLight("#b5d7ee", 1.8);
+      const rim = new THREE.DirectionalLight(fillTint, themed ? 1.35 : 1.8);
       rim.position.set(3, 3, -3);
       scene.add(rim);
-      const groundGeometry = new THREE.PlaneGeometry(8, 8);
-      const groundMaterial = new THREE.ShadowMaterial({ opacity: 0.2, depthWrite: false });
+      // Original radial vertex-alpha contact shadow: compact, centered under
+      // the feet and fully transparent at its edge. No cast-shadow trail,
+      // textures, opaque ground rectangle or shadow-map render targets.
+      const groundGeometry = new THREE.RingGeometry(0, 1, 48, 8);
+      const positions = groundGeometry.getAttribute("position");
+      const colors = new Float32Array(positions.count * 4);
+      for (let i = 0; i < positions.count; i++) {
+        const radiusSquared = positions.getX(i) ** 2 + positions.getY(i) ** 2;
+        colors.set([1, 1, 1, Math.max(0, 1 - radiusSquared) ** 3], i * 4);
+      }
+      groundGeometry.setAttribute("color", new THREE.BufferAttribute(colors, 4));
+      const groundMaterial = new THREE.MeshBasicMaterial({
+        color: contactTint, vertexColors: true, transparent: true,
+        opacity: themed ? 0.22 : 0.18, depthWrite: false, toneMapped: false,
+      });
       resources.geometries.add(groundGeometry);
       resources.materials.add(groundMaterial);
-      const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+      ground = new THREE.Mesh(groundGeometry, groundMaterial);
+      ground.name = "contact-shadow";
       ground.rotation.x = -Math.PI / 2;
-      ground.receiveShadow = true;
+      ground.scale.set(0.8, 0.44, 1);
       scene.add(ground);
       host.append(canvas);
       motion = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -512,7 +585,7 @@ export function CriticCharacter({
       fail();
     }
     return release;
-  }, [criticId]);
+  }, [criticId, paletteA, paletteB, paletteC]);
 
   return (
     <div
@@ -520,6 +593,7 @@ export function CriticCharacter({
       data-leaving={leaving}
       data-speaking={speaking}
       data-reaction={reaction}
+      data-palette={!!palette}
       aria-hidden={leaving || undefined}
     >
       <div key={criticId} className={css.entrance}>

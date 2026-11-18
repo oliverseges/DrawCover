@@ -14,6 +14,7 @@ const record: Album = {
 };
 
 afterEach(() => {
+  localStorage.clear();
   vi.useRealTimers();
   vi.unstubAllGlobals();
 });
@@ -33,7 +34,7 @@ it("grounds stable scores in the server's distinct tastes without claiming audio
   expect(rock.score).toBe(10);
 });
 
-it("reveals speech with babble, skips on tap, and keeps muted/reduced messages instantly accessible once", async () => {
+it("types silently while muted, preserves progress on mute, and skips or reduces motion without repeated announcements", async () => {
   vi.useFakeTimers();
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   let reduced = false;
@@ -48,18 +49,23 @@ it("reveals speech with babble, skips on tap, and keeps muted/reduced messages i
     const button = () => host.querySelector("button")!;
     expect(button().textContent).toBe("");
     expect(host.querySelector('[role="status"]')?.textContent).toBe("Hello record.");
-    expect(babble).toHaveBeenCalledOnce();
-    await act(async () => vi.advanceTimersByTime(48));
+    expect(babble).not.toHaveBeenCalled();
+    await act(async () => vi.advanceTimersByTime(56));
     expect(button().textContent).toBe("He");
+    expect(babble).toHaveBeenCalledOnce();
     await act(async () => button().click());
     expect(button().textContent).toBe("Hello record.");
     expect(vi.getTimerCount()).toBe(0);
     await act(async () => render("A different critic."));
-    expect(button().textContent).toBe("");
+    await act(async () => vi.advanceTimersByTime(56));
+    const progress = button().textContent;
     await act(async () => render("A different critic.", true));
-    expect(button().textContent).toBe("A different critic.");
-    expect(vi.getTimerCount()).toBe(0);
+    expect(button().textContent).toBe(progress);
+    expect(vi.getTimerCount()).toBeGreaterThan(0);
     const calls = babble.mock.calls.length;
+    await act(async () => vi.advanceTimersByTime(140));
+    expect(button().textContent!.length).toBeGreaterThan(progress!.length);
+    expect(babble).toHaveBeenCalledTimes(calls);
     reduced = true;
     await act(async () => render("No animation.", false));
     expect(button().textContent).toBe("No animation.");
@@ -82,8 +88,9 @@ it("starts babble only on a gesture, mutes/stops, and cleans up on critic change
   const param = () => ({ value: 0, setValueAtTime: vi.fn(), linearRampToValueAtTime: vi.fn(), exponentialRampToValueAtTime: vi.fn() });
   vi.stubGlobal("AudioContext", class {
     currentTime = 1;
+    state = "suspended";
     destination = {};
-    resume = resume;
+    async resume() { resume(); this.state = "running"; }
     close = close;
     createOscillator() {
       const oscillator = { type: "", frequency: param(), connect: (node: unknown) => node, start: vi.fn(), stop: vi.fn(), disconnect: vi.fn() };
@@ -99,19 +106,28 @@ it("starts babble only on a gesture, mutes/stops, and cleans up on critic change
   const root = createRoot(host);
   try {
     await act(async () => root.render(createElement(Harness, { id: "mara" })));
-    expect(latest.muted).toBe(true);
+    expect(latest.muted).toBe(false);
     expect(oscillators).toHaveLength(0);
-    await act(async () => latest.toggle());
+    await act(async () => latest.speak());
+    expect(oscillators).toHaveLength(0);
+    await act(async () => document.dispatchEvent(new Event("pointerdown")));
     expect(resume).toHaveBeenCalledOnce();
-    expect(oscillators).toHaveLength(6);
-    await act(async () => vi.advanceTimersByTime(20));
+    await act(async () => latest.speak());
+    expect(oscillators).toHaveLength(1);
     expect(latest.speaking).toBe(true);
     await act(async () => latest.toggle());
     expect(latest.muted).toBe(true);
+    expect(localStorage.getItem("drawcover:critic-sound")).toBe("off");
     expect(latest.speaking).toBe(false);
     expect(vi.getTimerCount()).toBe(0);
     expect(oscillators.every(node => node.stop.mock.calls.length >= 2)).toBe(true);
+    await act(async () => latest.speak());
+    expect(oscillators).toHaveLength(1);
+    await act(async () => root.render(null));
+    await act(async () => root.render(createElement(Harness, { id: "mara" })));
+    expect(latest.muted).toBe(true);
     await act(async () => latest.toggle());
+    expect(latest.muted).toBe(false);
     await act(async () => root.render(createElement(Harness, { id: "jax" })));
     expect(vi.getTimerCount()).toBe(0);
     await act(async () => latest.speak("disappointed"));
@@ -124,7 +140,7 @@ it("starts babble only on a gesture, mutes/stops, and cleans up on critic change
   } finally {
     await act(async () => root.unmount());
     expect(vi.getTimerCount()).toBe(0);
-    expect(close).toHaveBeenCalledOnce();
+    expect(close).toHaveBeenCalledTimes(2);
     host.remove();
   }
 });

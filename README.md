@@ -44,14 +44,16 @@ critic, vocal mode, cached result and recovery receipt stay bound together; repe
 reads cannot spend or reinterpret the verdict. Another round returns to the drawing
 with a new critic; another generated album uses the normal album allowance.
 
-The discoverable **Sound off/on** control enables short, original synthesized babbles
-and grunts after a user gesture. Each critic has a different oscillator voice; no
+Sound is **on by default**, unlocked by the first click, draw stroke or key press.
+The discoverable mute control remembers the choice in this browser. Each critic has
+a different, original oscillator voice; no
 recordings, speech service or AI credits are used. Mouth/gesture bursts, gentle idles
 and review poses remain optional decoration. Music playback stops babble, revealing
 a verdict pauses music, and mute, hidden tabs, critic changes and navigation stop it.
 Short speech bubbles greet and react; the review appears in the same bubble.
-Text reveals alongside babble and can be tapped to show it instantly. Muted or
-reduced-motion bubbles show all text immediately; screen readers receive the full
+Text reveals alongside short, character-triggered syllables and can be tapped to
+show it instantly. Muting or playing music silences babble without stopping or restarting
+the reveal. Reduced motion shows all text immediately; screen readers receive the full
 message once, not individual letters. All scores and reviews are usable silently.
 
 > **One Google Gemini key is enough. One OpenRouter key also works.**

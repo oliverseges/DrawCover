@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
@@ -44,10 +44,12 @@ export function DrawCover({ criticMode = false }: { criticMode?: boolean }) {
   const [leaving, setLeaving] = useState(false);
   const [changingCritic, setChangingCritic] = useState(false);
   const [reviewShown, setReviewShown] = useState(false);
+  const [characterReady, setCharacterReady] = useState(false);
+  const onCharacterReady = useCallback(() => setCharacterReady(true), []);
   const navigationTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const criticTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const router = useRouter();
-  const voice = useCriticVoice(criticId);
+  const voice = useCriticVoice(criticId, criticMode);
   const { audioRef, tracks, active, loading: trackLoading, notice, select } = useAlbumPlayer(album);
   useEffect(() => () => {
     if (navigationTimer.current) clearTimeout(navigationTimer.current);
@@ -58,6 +60,7 @@ export function DrawCover({ criticMode = false }: { criticMode?: boolean }) {
     if (loading || album || changingCritic || leaving) return;
     voice.stop();
     const change = () => {
+      setCharacterReady(false);
       setCriticId(CRITIC_IDS[(CRITIC_IDS.indexOf(criticId) + 1) % CRITIC_IDS.length]);
       setChangingCritic(false);
     };
@@ -75,7 +78,10 @@ export function DrawCover({ criticMode = false }: { criticMode?: boolean }) {
     setPlaying(false);
     setError("");
     setReviewShown(false);
-    if (criticMode) setCriticId(CRITIC_IDS[(CRITIC_IDS.indexOf(criticId) + 1) % CRITIC_IDS.length]);
+    if (criticMode) {
+      setCharacterReady(false);
+      setCriticId(CRITIC_IDS[(CRITIC_IDS.indexOf(criticId) + 1) % CRITIC_IDS.length]);
+    }
   }
 
   async function go() {
@@ -92,6 +98,7 @@ export function DrawCover({ criticMode = false }: { criticMode?: boolean }) {
       if (!response.ok) throw new Error(body.message || "Your record couldn't be made. Please try again.");
       const result: Album = body;
       if (!result.cover.dataUrl) result.cover.dataUrl = await stylizeDrawing(image, result.palette);
+      if (criticMode) setCharacterReady(false);
       setAlbum(result);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Couldn't reach the studio. Please try again.");
@@ -111,16 +118,14 @@ export function DrawCover({ criticMode = false }: { criticMode?: boolean }) {
     ? "No peeking. I'm sharpening my pencil."
     : album ? "Your record is on my desk. Ready for the verdict?" : greeting;
 
-  return (
-    <main className={`drawcover ${album ? "has-album" : ""} ${criticMode ? "critic-mode" : ""} ${leaving ? "critic-leaving" : ""}`} style={theme}>
-      {criticMode && <aside className={`critic-panel ${album ? "critic-result" : ""}`} aria-label="Your fictional music critic">
+  const criticPanel = criticMode ? <aside className={`critic-panel ${album ? "critic-result" : ""}`} aria-label="Your fictional music critic">
         <div className="critic-portrait">
-          <CriticCharacter key={criticId} criticId={album?.criticReview?.criticId ?? criticId} leaving={leaving || changingCritic} onChange={changeCritic} changeDisabled={loading || !!album || changingCritic || leaving} speaking={voice.speaking} reaction={reviewShown && album?.criticReview ? album.criticReview.score >= 7 ? "pleased" : "disappointed" : "neutral"} />
+          <CriticCharacter key={criticId} criticId={album?.criticReview?.criticId ?? criticId} palette={album?.palette} onReady={onCharacterReady} leaving={leaving || changingCritic} onChange={changeCritic} changeDisabled={loading || !!album || changingCritic || leaving} speaking={voice.speaking} reaction={reviewShown && album?.criticReview ? album.criticReview.score >= 7 ? "pleased" : "disappointed" : "neutral"} />
           <button type="button" className="critic-sound" aria-label={voice.muted ? "Unmute critic" : "Mute critic"} aria-pressed={!voice.muted} title={voice.muted ? "Enable original character babble" : "Mute character babble"} onClick={() => { audioRef.current?.pause(); voice.toggle(); }}>{voice.muted ? <VolumeX size={15} /> : <Volume2 size={15} />}<span>Sound {voice.muted ? "off" : "on"}</span></button>
+          <h2 className="critic-name">{CRITICS[album?.criticReview?.criticId ?? criticId].name}</h2>
         </div>
         <div className="critic-copy">
-          <h2 className="critic-name">{CRITICS[album?.criticReview?.criticId ?? criticId].name}</h2>
-          {!leaving && !changingCritic && <CriticSpeech text={speech} muted={voice.muted || playing} onBabble={duration => voice.speak(review && review.score >= 7 ? "pleased" : reviewShown ? "disappointed" : "neutral", duration)} onQuiet={voice.stop} />}
+          {characterReady && !leaving && !changingCritic && <CriticSpeech text={speech} muted={voice.muted || playing} onBabble={() => voice.speak(review && review.score >= 7 ? "pleased" : reviewShown ? "disappointed" : "neutral")} onQuiet={voice.stop} />}
           {album?.criticReview && <>
             {!reviewShown ? <button className="critic-verdict-button" type="button" onClick={() => { audioRef.current?.pause(); setReviewShown(true); }}>Reveal verdict</button> : <section className="critic-review" aria-label="Critic's review">
               <p className="critic-score"><strong>{album.criticReview.score}</strong><span>/10</span></p>
@@ -132,7 +137,11 @@ export function DrawCover({ criticMode = false }: { criticMode?: boolean }) {
           </>}
           {voice.audioError && <p role="status">{voice.audioError}</p>}
         </div>
-      </aside>}
+      </aside> : null;
+
+  return (
+    <main className={`drawcover ${album ? "has-album" : ""} ${criticMode ? "critic-mode" : ""} ${leaving ? "critic-leaving" : ""}`} style={theme}>
+      {!album && criticPanel}
       {!album ? (
         <section className="drawing-room" aria-label="Draw your record">
           <div className="cover-toolbar" aria-label="Drawing tools" role="toolbar">
@@ -176,6 +185,7 @@ export function DrawCover({ criticMode = false }: { criticMode?: boolean }) {
             <span className="edition">ONE DRAWING. ONE RECORD.</span>
           </header>
           <section className="album-room" aria-label="Your generated album">
+            {criticPanel}
             <AlbumJacket key={album.id} album={album} />
             <div className="record-column">
               <div className="record-kicker"><span className="live-dot" /> A RECORD THAT DIDN&apos;T EXIST UNTIL YOU</div>

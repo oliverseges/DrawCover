@@ -1,5 +1,11 @@
 import { expect, test, type Page } from "@playwright/test";
 
+declare global {
+  interface Window {
+    __criticAudioProbe: { context: AudioContext; meter: AnalyserNode; starts: number }[];
+  }
+}
+
 const png = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=";
 const wav = Buffer.alloc(844, 128);
 wav.write("RIFF", 0);
@@ -137,7 +143,7 @@ for (const reducedMotion of [false, true]) {
     await page.getByRole("link", { name: "Critic mode", exact: false }).click();
     await expect(page).toHaveURL(/\/play$/);
     await expect(page.getByRole("heading", { name: "Mara Moss" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Unmute critic" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Mute critic", exact: true })).toBeVisible();
     const change = page.getByRole("button", { name: "Change critic", exact: true });
     await expect(change).toBeInViewport();
     await change.click();
@@ -155,6 +161,15 @@ for (const reducedMotion of [false, true]) {
     await expect(page.getByText("Concept judging only. No audio listening.")).toBeVisible();
     await page.getByText("What won (or lost) them over").click();
     await expect(page.getByText("Guitar-driven rock; raw energy and dark artwork.")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Show full critic message" })).toBeVisible();
+    expect(await page.locator(".critic-result").evaluate(element => element.parentElement?.getAttribute("aria-label"))).toBe("Your generated album");
+    if (!reducedMotion) {
+      for (const viewport of [{ width: 1280, height: 720 }, { width: 1366, height: 768 }, { width: 1440, height: 900 }, { width: 1920, height: 1080 }]) {
+        await page.setViewportSize(viewport);
+        expect(await page.evaluate(() => document.documentElement.scrollHeight === innerHeight && document.documentElement.scrollWidth === innerWidth)).toBe(true);
+      }
+      await page.setViewportSize({ width: 1280, height: 720 });
+    }
     await page.evaluate(() => {
       const label = document.createElement("div");
       label.textContent = "MOCKED ALBUM / REVIEW - UI EVIDENCE";
@@ -176,6 +191,70 @@ for (const reducedMotion of [false, true]) {
   });
 }
 
+test("the first mode gesture unlocks non-silent babble with growing text and actual mouth movement", async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  await page.addInitScript(() => {
+    window.__criticAudioProbe = [];
+    const Native = window.AudioContext;
+    window.AudioContext = class extends Native {
+      measurement: Window["__criticAudioProbe"][number];
+      constructor(options?: AudioContextOptions) {
+        super(options);
+        const meter = super.createAnalyser();
+        meter.fftSize = 256;
+        meter.connect(this.destination);
+        this.measurement = { context: this, meter, starts: 0 };
+        window.__criticAudioProbe.push(this.measurement);
+      }
+      createGain() {
+        const gain = super.createGain();
+        const connect = gain.connect.bind(gain);
+        Object.defineProperty(gain, "connect", { value: (target: AudioNode, ...args: unknown[]) => Reflect.apply(connect, gain, [target === this.destination ? this.measurement.meter : target, ...args]) });
+        return gain;
+      }
+      createOscillator() {
+        const oscillator = super.createOscillator();
+        const start = oscillator.start.bind(oscillator);
+        oscillator.start = (when?: number) => { this.measurement.starts++; start(when); };
+        return oscillator;
+      }
+    };
+  });
+  await page.route("**/api/**", route => route.abort("blockedbyclient"));
+  await page.goto("/");
+  await page.getByRole("link", { name: "Critic mode", exact: false }).click();
+  await page.getByRole("button", { name: "Show full critic message" }).waitFor();
+  const samples = [];
+  for (let index = 0; index < 22; index++) {
+    samples.push(await page.evaluate(() => ({
+      text: document.querySelector(".critic-bubble > span")!.textContent!.length,
+      mouth: Number(document.querySelector(".critic-portrait canvas")?.getAttribute("data-mouth-open") ?? 0),
+      audio: window.__criticAudioProbe.map(probe => {
+        const values = new Float32Array(256);
+        probe.meter.getFloatTimeDomainData(values);
+        return { running: probe.context.state === "running", rms: Math.sqrt(values.reduce((sum, value) => sum + value * value, 0) / values.length) };
+      }),
+    })));
+    await page.waitForTimeout(35);
+  }
+  expect(samples.some(sample => sample.audio.some(audio => audio.running && audio.rms > .0005))).toBe(true);
+  expect(Math.max(...samples.map(s => s.text)) - Math.min(...samples.map(s => s.text))).toBeGreaterThan(3);
+  expect(Math.max(...samples.map(s => s.mouth)) - Math.min(...samples.map(s => s.mouth))).toBeGreaterThan(.01);
+  await page.getByRole("button", { name: "Mute critic", exact: true }).click();
+  await page.getByRole("button", { name: "Change critic", exact: true }).click();
+  await page.getByRole("heading", { name: "Jax Static" }).waitFor();
+  const bubble = page.locator(".critic-bubble > span");
+  await page.getByRole("button", { name: "Show full critic message" }).waitFor();
+  const before = (await bubble.textContent())!.length;
+  const starts = await page.evaluate(() => window.__criticAudioProbe.reduce((sum, probe) => sum + probe.starts, 0));
+  await expect.poll(async () => (await bubble.textContent())!.length).toBeGreaterThan(before + 2);
+  expect(await page.evaluate(() => window.__criticAudioProbe.reduce((sum, probe) => sum + probe.starts, 0))).toBe(starts);
+  await page.getByRole("button", { name: "Show full critic message" }).click();
+  await expect(bubble).toHaveText("Show me a record with something to say.");
+  await page.reload();
+  await expect(page.getByRole("button", { name: "Unmute critic" })).toBeVisible();
+});
+
 test("critic layout reserves drawing space and survives a reload interrupted by a mode change", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 720 });
   await page.goto("/");
@@ -187,6 +266,12 @@ test("critic layout reserves drawing space and survives a reload interrupted by 
   const canvas = (await page.locator('[data-testid="drawing-canvas"]:visible').boundingBox())!;
   const panel = (await critic.boundingBox())!;
   expect(panel.x + panel.width).toBeLessThan(canvas.x);
+  expect(Math.abs(panel.y + panel.height / 2 - canvas.y - canvas.height / 2)).toBeLessThan(4);
+  const centers = await critic.evaluate(element => {
+    const center = (node: Element) => { const rect = node.getBoundingClientRect(); return rect.left + rect.width / 2; };
+    return [element.querySelector(".critic-portrait canvas"), element.querySelector('[aria-label="Change critic"]'), element.querySelector(".critic-sound"), element.querySelector(".critic-name")].map(node => center(node!));
+  });
+  expect(Math.max(...centers) - Math.min(...centers)).toBeLessThan(6);
   await expect.poll(() => critic.locator("canvas").count()).toBe(1);
   expect(await critic.locator("svg").evaluateAll(elements => elements.every(element => element.getBoundingClientRect().height <= 44))).toBe(true);
   for (const viewport of [{ width: 1280, height: 720 }, { width: 1366, height: 768 }, { width: 1440, height: 900 }, { width: 1920, height: 1080 }]) {
@@ -215,7 +300,7 @@ test("critic layout reserves drawing space and survives a reload interrupted by 
     expect(mobileCanvas.width).toBeGreaterThanOrEqual(200);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await expect(page.getByRole("button", { name: "Change critic", exact: true })).toBeInViewport();
-    await expect(page.getByRole("button", { name: "Unmute critic" })).toBeInViewport();
+    await expect(page.getByRole("button", { name: "Mute critic", exact: true })).toBeInViewport();
     const switchBox = (await page.getByRole("link", { name: "Normal mode", exact: false }).boundingBox())!;
     const goBox = (await page.getByRole("button", { name: "PRESS RECORD", exact: true }).boundingBox())!;
     expect(switchBox.y >= goBox.y + goBox.height || switchBox.x >= goBox.x + goBox.width || switchBox.x + switchBox.width <= goBox.x).toBe(true);
