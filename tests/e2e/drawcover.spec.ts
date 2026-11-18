@@ -66,6 +66,20 @@ async function setup(page: Page, blocked = false) {
   });
 }
 
+async function drawingWordmark(page: Page) {
+  const wordmark = page.locator("main:visible .drawing-header .wordmark");
+  await expect(wordmark).toHaveText("DRAWCOVER");
+  await expect(wordmark).toBeInViewport();
+  const style = await wordmark.evaluate(element => ({
+    ink: getComputedStyle(element).color,
+    dot: getComputedStyle(element.querySelector(".wordmark-dot")!).backgroundColor,
+    bottom: element.getBoundingClientRect().bottom,
+  }));
+  expect(style.ink).toBe("rgb(0, 0, 0)");
+  expect(style.dot).toBe("rgb(0, 0, 0)");
+  expect(style.bottom).toBeLessThan((await page.getByRole("toolbar").boundingBox())!.y);
+}
+
 for (const width of [1280, 390]) {
   test(`vocal choice defaults to Instrumental and retains Lyrics on the album at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 844 });
@@ -100,6 +114,7 @@ for (const viewport of [{ width: 1280, height: 720 }, { width: 1366, height: 768
   test(`vocal toggle is below the button at 70 percent width and fits ${viewport.width}x${viewport.height}`, async ({ page }) => {
     await page.setViewportSize(viewport);
     await page.goto("/");
+    await drawingWordmark(page);
     const button = (await page.getByRole("button", { name: "PRESS RECORD", exact: true }).boundingBox())!;
     const toggle = (await page.getByRole("group", { name: "Song vocals" }).boundingBox())!;
     expect(toggle.y).toBeGreaterThanOrEqual(button.y + button.height + 8);
@@ -107,6 +122,7 @@ for (const viewport of [{ width: 1280, height: 720 }, { width: 1366, height: 768
     expect(Math.abs(toggle.x + toggle.width / 2 - button.x - button.width / 2)).toBeLessThan(1);
     expect(await page.evaluate(() => document.documentElement.scrollHeight <= innerHeight && document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await expect(page.getByRole("link", { name: "Critic mode", exact: false })).toBeVisible();
+    if (viewport.width === 1280 || viewport.width === 390) await page.screenshot({ path: `output/playwright/draw-wordmark-${viewport.width === 390 ? "mobile" : "desktop"}.png` });
   });
 }
 
@@ -344,6 +360,7 @@ test("critic layout reserves drawing space and survives a reload interrupted by 
   await page.getByRole("link", { name: "Critic mode", exact: false }).click();
   const critic = page.getByRole("complementary", { name: "Your fictional music critic" });
   await expect(page.getByRole("button", { name: "Change critic", exact: true })).toBeVisible();
+  await drawingWordmark(page);
   await expect.poll(async () => (await page.locator('[data-testid="drawing-canvas"]:visible').boundingBox())!.x).toBeGreaterThan(normal.x + 30);
   const canvas = (await page.locator('[data-testid="drawing-canvas"]:visible').boundingBox())!;
   const panel = (await critic.boundingBox())!;
@@ -376,6 +393,7 @@ test("critic layout reserves drawing space and survives a reload interrupted by 
   await expect(page.getByRole("heading", { name: "Jax Static" })).toBeVisible();
   for (const viewport of [{ width: 390, height: 844 }, { width: 320, height: 568 }]) {
     await page.setViewportSize(viewport);
+    await drawingWordmark(page);
     const mobileCanvas = (await page.locator('[data-testid="drawing-canvas"]:visible').boundingBox())!;
     const mobilePanel = (await critic.boundingBox())!;
     expect(mobilePanel.y + mobilePanel.height).toBeLessThanOrEqual(mobileCanvas.y);

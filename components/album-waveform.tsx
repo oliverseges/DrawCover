@@ -38,8 +38,12 @@ export function AlbumWaveform({
     let frame: number | undefined;
     let listeningContext: AudioContext | undefined;
     let waiting = false;
+    const levels = new Float32Array(bars.length);
+    let previousTime = 0;
 
     function rest() {
+      levels.fill(0);
+      previousTime = 0;
       for (const bar of bars) {
         bar.style.transform = `scaleY(${REST_HEIGHT})`;
         bar.style.opacity = String(REST_OPACITY);
@@ -57,7 +61,7 @@ export function AlbumWaveform({
         !waiting && !document.hidden && !motion.matches;
     }
 
-    function draw() {
+    function draw(now = performance.now()) {
       frame = undefined;
       const graph = graphs.get(audio);
       if (!canDraw() || !graph || context?.state !== "running") {
@@ -66,17 +70,24 @@ export function AlbumWaveform({
       }
 
       graph.analyser.getFloatTimeDomainData(graph.samples);
-      // Each bar is the RMS of a short slice of the *current* PCM window.
-      // No random/time-based motion or smoothing tail through silence.
+      const elapsed = previousTime ? Math.min(250, now - previousTime) : 1000 / 60;
+      previousTime = now;
+      // Overlapping PCM windows avoid flickering with a waveform's phase.
+      // Time-based attack/release keeps the response consistent across frame rates.
+      const windowSize = graph.samples.length / 8;
       for (let index = 0; index < bars.length; index++) {
-        const start = Math.floor(index * graph.samples.length / BAR_COUNT);
-        const end = Math.floor((index + 1) * graph.samples.length / BAR_COUNT);
+        const start = Math.floor(index * (graph.samples.length - windowSize) / (BAR_COUNT - 1));
+        const end = start + windowSize;
         let energy = 0;
         for (let sample = start; sample < end; sample++) {
           energy += graph.samples[sample] ** 2;
         }
         const rms = Math.sqrt(energy / (end - start));
-        const level = audio.muted || audio.volume === 0 || rms < 0.003 ? 0 : Math.min(1, rms * 3);
+        const target = audio.muted || audio.volume === 0 || rms < 0.003 ? 0 : Math.tanh(rms * 1.8) * .8;
+        const duration = target > levels[index] ? 80 : 360;
+        levels[index] += (target - levels[index]) * (1 - Math.exp(-elapsed / duration));
+        if (target === 0 && levels[index] < .001) levels[index] = 0;
+        const level = levels[index];
         bars[index].style.transform = `scaleY(${REST_HEIGHT + level * (1 - REST_HEIGHT)})`;
         bars[index].style.opacity = String(REST_OPACITY + level * 0.55);
       }

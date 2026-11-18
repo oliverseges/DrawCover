@@ -33,6 +33,10 @@ const tools: { id: Tool; label: string; icon: typeof Brush }[] = [
   { id: "fill", label: "Fill", icon: PaintBucket },
 ];
 
+function Wordmark() {
+  return <span className="wordmark"><span>DRA<span className="wordmark-pair"><span className="wordmark-w">W</span><span className="wordmark-c">C</span></span>OVER</span><span className="wordmark-dot" /></span>;
+}
+
 export function DrawCover({ criticMode = false }: { criticMode?: boolean }) {
   useShortcuts();
   const drawing = useDrawingStore();
@@ -142,6 +146,7 @@ export function DrawCover({ criticMode = false }: { criticMode?: boolean }) {
 
   return (
     <main className={`drawcover ${album ? "has-album" : ""} ${criticMode ? "critic-mode" : ""} ${leaving ? "critic-leaving" : ""}`} style={theme}>
+      {!album && <header className="drawing-header"><h1><Wordmark /></h1></header>}
       {!album && criticPanel}
       {!album ? (
         <section className="drawing-room" aria-label="Draw your record">
@@ -182,7 +187,7 @@ export function DrawCover({ criticMode = false }: { criticMode?: boolean }) {
           <AlbumAmbient palette={album.palette} />
           <header className="album-header">
             <button type="button" className="back-button" onClick={nextDrawing}><ArrowLeft size={16} /> {criticMode ? "Another round" : "New drawing"}</button>
-            <span className="wordmark"><span>DRA<span className="wordmark-pair"><span className="wordmark-w">W</span><span className="wordmark-c">C</span></span>OVER</span><span className="wordmark-dot" /></span>
+            <Wordmark />
             <span className="edition">ONE DRAWING. ONE RECORD.</span>
           </header>
           <section className="album-room" aria-label="Your generated album">

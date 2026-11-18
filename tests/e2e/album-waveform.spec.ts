@@ -26,10 +26,10 @@ window.fixture = {
 render();
 `;
 
-// Six seconds: loud tone / silence / quieter tone. No encoded fixtures or downloads.
+// Four seconds per section leaves room for the release envelope and slow CI frames.
 function wav(silent = false) {
   const rate = 24000;
-  const samples = rate * 6;
+  const samples = rate * 12;
   const bytes = Buffer.alloc(44 + samples * 2);
   bytes.write("RIFF", 0);
   bytes.writeUInt32LE(bytes.length - 8, 4);
@@ -45,7 +45,7 @@ function wav(silent = false) {
   bytes.writeUInt32LE(samples * 2, 40);
   for (let index = 0; index < samples; index++) {
     const time = index / rate;
-    const amplitude = silent || (time >= 2 && time < 4) ? 0 : time < 2 ? 0.65 : 0.08;
+    const amplitude = silent || (time >= 4 && time < 8) ? 0 : time < 4 ? 0.65 : 0.08;
     bytes.writeInt16LE(Math.round(Math.sin(time * 440 * Math.PI * 2) * amplitude * 32767), 44 + index * 2);
   }
   return `data:audio/wav;base64,${bytes.toString("base64")}`;
@@ -193,11 +193,12 @@ test.describe("AlbumWaveform real browser audio", () => {
     const resting = await heights();
     await play();
     await expect.poll(level).toBeGreaterThan(0.5);
-    await seek(2.5);
+    await seek(4.3);
+    await expect.poll(() => page.evaluate(() => window.fixture.audio.currentTime)).toBeGreaterThan(4.5);
     await expect.poll(heights).toEqual(resting);
     await page.waitForTimeout(100);
     expect(await heights()).toEqual(resting);
-    await seek(4.2);
+    await seek(8.4);
     await expect.poll(level).toBeGreaterThan(0.15);
     expect(await level()).toBeLessThan(0.5);
     await seek(0.3);
@@ -219,7 +220,7 @@ test.describe("AlbumWaveform real browser audio", () => {
     await expect.poll(heights).toEqual(resting);
     await play();
     await expect.poll(level).toBeGreaterThan(0.5);
-    await seek(5.85);
+    await seek(11.85);
     await expect.poll(() => page.evaluate(() => window.fixture.audio.ended)).toBe(true);
     await expect.poll(heights).toEqual(resting);
     expect(await page.evaluate(() => window.probe.sources)).toBe(1);
@@ -268,6 +269,7 @@ test.describe("AlbumWaveform real browser audio", () => {
     await expect.poll(level).toBeGreaterThan(0.5);
     await page.evaluate(() => { window.fixture.audio.muted = true; });
     await expect.poll(heights).toEqual(resting);
+    await seek(.3);
     await page.evaluate(() => { window.fixture.audio.muted = false; });
     await expect.poll(level).toBeGreaterThan(0.5);
     expect(await page.evaluate(() => window.probe.sources)).toBe(1);
