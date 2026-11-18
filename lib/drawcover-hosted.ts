@@ -1,5 +1,6 @@
 import "server-only";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
+import { createHash } from "node:crypto";
 
 export const isHostedDemo = () => process.env.DRAWCOVER_HOSTED === "true";
 
@@ -32,22 +33,38 @@ export function hostedAlbum<T>(id: string): Promise<T> {
   return stateRequest(`/album?id=${encodeURIComponent(id)}`);
 }
 
+export function hostedRecording(id: string): Promise<Record<string, unknown>> {
+  return stateRequest(`/recording?id=${encodeURIComponent(id)}`);
+}
+
 export async function hostedGeneration<T>(
   kind: "album" | "track", key: string,
   create: () => Promise<T>,
   errorInfo: (error: unknown) => { status: number; message: string },
   albumId?: (value: T) => string,
+  recordingId?: string | null,
 ): Promise<T> {
-  const claim = await stateRequest<{ cached?: T; lease?: string }>("/claim", { kind, key });
-  if ("cached" in claim) return claim.cached!;
+  const started = Date.now();
+  const recording = recordingId ? createHash("sha256").update(recordingId).digest("hex").slice(0, 12) : undefined;
+  const trace = (outcome: string) => console.info("[DrawCover generation]", JSON.stringify({
+    kind, key: key.slice(0, 18), recording, outcome, elapsedMs: Date.now() - started,
+  }));
+  const claim = await stateRequest<{ cached?: T; lease?: string }>("/claim", { kind, key, recordingId: recordingId ?? undefined });
+  if ("cached" in claim) {
+    trace("cache-hit");
+    return claim.cached!;
+  }
   if (!claim.lease) throw new HostedDemoError(503, "The public demo couldn't reserve this generation.");
+  trace("reserved");
   let value: T;
   try {
     value = await create();
   } catch (error) {
     await stateRequest("/fail", { key, lease: claim.lease, error: errorInfo(error) });
+    trace("failed");
     throw error;
   }
   await stateRequest("/complete", { key, lease: claim.lease, value, albumId: albumId?.(value) });
+  trace("stored");
   return value;
 }

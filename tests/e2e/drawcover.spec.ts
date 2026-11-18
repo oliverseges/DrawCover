@@ -191,7 +191,7 @@ test("shared daily exhaustion is not presented as a personal cooldown", async ({
   await expect(page.locator(".track-error")).toHaveCount(0);
 });
 
-test("a stalled first-track body times out, then Retry plays the cached response", async ({ page }) => {
+test("a stalled first-track body recovers and plays without manual Retry or a second POST", async ({ page }) => {
   await setup(page);
   await page.addInitScript(() => {
     const original = window.fetch.bind(window);
@@ -209,17 +209,21 @@ test("a stalled first-track body times out, then Retry plays the cached response
     requests++;
     return route.fulfill({ json: { dataUrl: audio, model: "mock" } });
   });
+  let reads = 0;
+  await page.route("**/api/drawcover/recording?*", route => {
+    reads++;
+    expect(route.request().method()).toBe("GET");
+    return route.fulfill({ json: { dataUrl: audio, model: "mock" } });
+  });
   await draw(page);
   await page.clock.install();
   await page.getByRole("button", { name: "PRESS RECORD", exact: true }).click();
   await expect(page.getByText("MAKING", { exact: true })).toBeVisible();
   await page.clock.fastForward(75_001);
-  await expect(page.locator(".track-error")).toContainText("connection timed out");
-  expect(requests).toBe(0);
-  await page.getByRole("button", { name: "Play track 1: First Light" }).click();
   await expect(page.locator(".track-error")).toHaveCount(0);
   await expect.poll(() => page.evaluate(() => (window as unknown as { __plays: number }).__plays)).toBe(1);
-  expect(requests).toBe(1);
+  expect(requests).toBe(0);
+  expect(reads).toBe(1);
 });
 
 for (const scheme of ["light", "dark"] as const) {

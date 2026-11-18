@@ -265,6 +265,10 @@ npm run build
 For the actual Workers runtime, also run `npm run cf:build` then `npm run test:workers`.
 This regression drives the upload bundle and SQLite Durable Object with **all outbound
 provider traffic mocked**, including replay, daily-cap and personal-cooldown checks.
+Its native-browser loop truncates real HTTP album/music responses and requires one-click
+playback, free recovery and unchanged reservations after reload/concurrent reads. Set
+`WORKER_SLOW_PROBE=true` when running `node tests/workers/browser.mjs` for a 50-second
+provider-stream probe instead of the fast scenarios.
 
 Unit tests mock providers. Browser tests mock generation endpoints: **tests spend no AI
 credits**. They cover provider combinations/fallback, invalid configuration, cache and
@@ -439,8 +443,16 @@ before reserving; once a provider request is attempted, failures conservatively 
 Browser requests have a deadline covering both headers **and response bodies** (120 seconds
 for artwork/metadata, 75 seconds for music), so a lost response cannot leave playback
 permanently stuck on MAKING. A deliberate Retry checks the same album/track cache;
-there are no automatic generation retries. Browser/network interruption can occur after
-server work finishes. A failed provider attempt is cached for two minutes to avoid
+interrupted responses now automatically recover through a **read-only recording receipt**,
+without replaying the POST. Recovery polls pending work for at most another 120 seconds
+(75 for music), with at most three consecutive transport failures. These reads cannot
+call a provider, reserve credits or trigger the generation cooldown. The opaque receipt
+survives hosted Worker restarts for 30 minutes and cannot be reused for different work.
+Expired/missing receipts and cached provider failures are reported, never regenerated
+automatically. Browser/network interruption can occur after server work finishes; recovery
+does not make platform-terminated or failed provider work succeed. Request IDs and sanitized
+timing/outcome logs help correlate browser transport errors with Worker completion.
+A failed provider attempt is cached for two minutes to avoid
 immediate repeated spending; a subsequent deliberate attempt may cost another generation.
 
 For local Workers validation, run `npm run cf:build` then

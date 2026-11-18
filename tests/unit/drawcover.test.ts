@@ -89,6 +89,26 @@ async function album() {
 }
 
 describe("DrawCover album endpoint", () => {
+  it("serves local album and music receipts without invoking providers again", async () => {
+    const { GET } = await import("@/app/api/drawcover/recording/route");
+    const albumId = crypto.randomUUID();
+    const albumRequest = request({ image: IMAGE });
+    albumRequest.headers.set("X-DrawCover-Recording", albumId);
+    const result = await (await albumPost(albumRequest)).json();
+    const savedAlbum = await GET(new Request(`http://localhost/api/drawcover/recording?id=${albumId}`));
+    expect(await savedAlbum.json()).toEqual(result);
+    const trackId = crypto.randomUUID();
+    const trackRequest = request({ albumId: result.id, trackIndex: 0 }, "/track");
+    trackRequest.headers.set("X-DrawCover-Recording", trackId);
+    const track = await (await trackPost(trackRequest)).json();
+    for (let index = 0; index < 3; index++) {
+      expect(await (await GET(new Request(`http://localhost/api/drawcover/recording?id=${trackId}`))).json()).toEqual(track);
+    }
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect((await GET(new Request("http://localhost/api/drawcover/recording?id=invalid"))).status).toBe(400);
+    expect((await GET(new Request(`http://localhost/api/drawcover/recording?id=${crypto.randomUUID()}`))).status).toBe(404);
+  });
+
   it("uses shared hosted albums/tracks after module reloads, with OpenRouter-only calls", async () => {
     vi.stubEnv("DRAWCOVER_HOSTED", "true");
     const records = new Map<string, unknown>();

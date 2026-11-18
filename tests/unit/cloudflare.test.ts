@@ -49,6 +49,35 @@ afterEach(() => {
 });
 
 describe("shared public-demo generation store", () => {
+  it("recovers an interrupted result after restart via a free read, preserving identity across concurrent requests", async () => {
+    const { backend } = storage();
+    const store = new DemoStore(backend, { albums: "25", tracks: "40" });
+    const started = await post(store, "/claim", { key: albumKey(1), kind: "album", recordingId: id });
+    const { lease } = await started.json();
+    const read = (instance: DemoStore) => instance.fetch(new Request(`https://state/recording?id=${id}`));
+    expect((await read(store)).status).toBe(202);
+    expect((await post(store, "/claim", { key: albumKey(1), kind: "album", recordingId: id })).status).toBe(409);
+    expect((await post(store, "/claim", { key: albumKey(2), kind: "album", recordingId: id })).status).toBe(409);
+    await post(store, "/complete", { key: albumKey(1), lease, value: { album: { id, title: "Saved" }, musicProvider: "openrouter" } });
+    const restarted = new DemoStore(backend, { albums: "25", tracks: "40" });
+    for (let index = 0; index < 12; index++) expect(await (await read(restarted)).json()).toEqual({ id, title: "Saved" });
+    expect(await (await restarted.fetch(new Request("https://state/usage"))).json()).toMatchObject({ used: { album: 1, track: 0 } });
+  });
+
+  it("never regenerates an expired failed recording through its receipt", async () => {
+    vi.useFakeTimers();
+    const { backend } = storage();
+    const store = new DemoStore(backend, { albums: "25", tracks: "40" });
+    const { lease } = await (await post(store, "/claim", { key: albumKey(1), kind: "album", recordingId: id })).json();
+    await post(store, "/fail", { key: albumKey(1), lease, error: { status: 502, message: "Spent attempt failed" } });
+    const read = () => store.fetch(new Request(`https://state/recording?id=${id}`));
+    expect((await read()).status).toBe(502);
+    vi.advanceTimersByTime(3 * 60_000);
+    expect((await read()).status).toBe(404);
+    expect((await post(store, "/claim", { key: albumKey(1), kind: "album", recordingId: id })).status).toBe(409);
+    expect(await (await store.fetch(new Request("https://state/usage"))).json()).toMatchObject({ used: { album: 1, track: 0 } });
+  });
+
   it("counts one normal album/listening flow once, with free cache reads, polling and in-flight retries", async () => {
     const { backend } = storage();
     const store = new DemoStore(backend, { albums: "25", tracks: "40" });

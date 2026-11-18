@@ -1,6 +1,8 @@
 import { cooldownResponse } from "../lib/generation-limit";
+import { validRecordingId } from "../lib/recording";
 
 type Kind = "album" | "track";
+type Receipt = { key: string; expires: number };
 type Job = {
   kind: Kind;
   status: "pending" | "ready" | "failed";
@@ -59,6 +61,9 @@ export class DemoStore {
     for (const [key, until] of this.storage.kv.list<number>({ prefix: "ip:" })) {
       if (until <= now) this.storage.kv.delete(key);
     }
+    for (const [key, receipt] of this.storage.kv.list<Receipt>({ prefix: "recording:" })) {
+      if (receipt.expires <= now) this.storage.kv.delete(key);
+    }
     const today = new Date(now).toISOString().slice(0, 10);
     for (const [key] of this.storage.kv.list({ prefix: "day:" })) {
       if (key !== `day:${today}`) this.storage.kv.delete(key);
@@ -73,6 +78,7 @@ export class DemoStore {
   private async scheduleCleanup() {
     const expires = [...this.storage.kv.list<Job>({ prefix: "job:" })].map(([, job]) => job.expires);
     expires.push(...[...this.storage.kv.list<number>({ prefix: "ip:" })].map(([, until]) => until));
+    expires.push(...[...this.storage.kv.list<Receipt>({ prefix: "recording:" })].map(([, receipt]) => receipt.expires));
     if (expires.length) await this.storage.setAlarm(Math.min(...expires));
   }
 
@@ -88,6 +94,19 @@ export class DemoStore {
 
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
+    if (request.method === "GET" && url.pathname === "/recording") {
+      const id = url.searchParams.get("id");
+      if (!validRecordingId(id)) return failure(400, "Invalid recording ID.");
+      const receipt = this.storage.kv.get<Receipt>(`recording:${id}`);
+      const job = receipt && this.storage.kv.get<Job>(`job:${receipt.key}`);
+      if (!receipt || receipt.expires <= Date.now() || !job || job.expires <= Date.now()) {
+        return failure(404, "This recording is unavailable or expired. No new generation was started.");
+      }
+      if (job.status === "pending") return Response.json({ pending: true }, { status: 202 });
+      if (job.status === "failed") return failure(job.error!.status, job.error!.message);
+      const value = this.read(receipt.key, job);
+      return Response.json(job.kind === "album" ? (value as { album: unknown }).album : value);
+    }
     if (request.method === "GET" && url.pathname === "/usage") {
       const day = new Date().toISOString().slice(0, 10);
       return Response.json({
@@ -110,6 +129,7 @@ export class DemoStore {
       key?: string; kind?: Kind; lease?: string; value?: unknown;
       error?: { status: number; message: string }; albumId?: string;
       network?: string; blocked?: boolean;
+      recordingId?: string;
     } = await request.json();
     if (url.pathname === "/access") {
       if (!body.network || !/^[a-f0-9]{64}$/.test(body.network)) return failure(400, "Invalid network key.");
@@ -138,6 +158,15 @@ export class DemoStore {
       if (url.pathname === "/claim") {
         const kind = body.kind;
         if (!kind || !key.startsWith(`${kind}:`)) return failure(400, "Invalid generation kind.");
+        if (body.recordingId !== undefined) {
+          if (!validRecordingId(body.recordingId)) return failure(400, "Invalid recording ID.");
+          const previous = this.storage.kv.get<Receipt>(`recording:${body.recordingId}`);
+          if (previous && (previous.key !== key || !job)) {
+            return failure(409, "This recording ID cannot start another generation.");
+          }
+          // A receipt only points at existing/reserved work; reading it can never claim work.
+          if (job) this.storage.kv.put(`recording:${body.recordingId}`, { key, expires: Date.now() + TTL });
+        }
         if (job?.status === "ready") return Response.json({ cached: this.read(key, job) });
         if (job?.status === "failed") return failure(job.error!.status, job.error!.message);
         if (job) return failure(409, "This request is already generating. Please wait a moment before retrying.");
@@ -160,6 +189,7 @@ export class DemoStore {
         this.storage.kv.put(`job:${key}`, {
           kind, status: "pending", lease, expires: Date.now() + LEASE_TTL, parts: 0,
         } satisfies Job);
+        if (body.recordingId) this.storage.kv.put(`recording:${body.recordingId}`, { key, expires: Date.now() + TTL });
         return Response.json({ lease });
       }
       if (url.pathname !== "/complete" && url.pathname !== "/fail") return failure(404, "Not found.");

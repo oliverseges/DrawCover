@@ -10,7 +10,7 @@
     "typecheck": "next typegen && tsc --noEmit",
     "test": "vitest run",
     "test:e2e": "playwright test",
-    "test:workers": "node tests/workers/smoke.mjs",
+    "test:workers": "node tests/workers/smoke.mjs && node tests/workers/browser.mjs",
     "cf:build": "node scripts/cloudflare-build.mjs",
     "cf:preview": "opennextjs-cloudflare preview",
     "cf:deploy": "opennextjs-cloudflare deploy"

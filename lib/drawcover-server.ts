@@ -6,7 +6,8 @@ import { MissingApiKeyError, recognizeDrawing } from "@/lib/gemini";
 import { generateAlbumCover, openRouterImageModel } from "@/lib/drawcover-image";
 import { DrawCoverConfigError, drawCoverConfig, providerKey, type DrawCoverProvider } from "@/lib/drawcover-config";
 import type { Album, DrawCoverTrack } from "@/lib/drawcover";
-import { HostedDemoError, hostedAlbum, hostedGeneration, isHostedDemo } from "@/lib/drawcover-hosted";
+import { HostedDemoError, hostedAlbum, hostedGeneration, hostedRecording, isHostedDemo } from "@/lib/drawcover-hosted";
+import { validRecordingId } from "@/lib/recording";
 
 const MAX_IMAGE_BYTES = 4 * 1024 * 1024;
 const MAX_OUTPUT_BYTES = 2 * 1024 * 1024;
@@ -29,10 +30,48 @@ type CacheEntry<T> = {
   expires: number;
   settled: boolean;
   value?: T;
+  error?: DrawCoverError;
 };
 type StoredAlbum = { album: Album; musicProvider: DrawCoverProvider };
 const albums = new Map<string, CacheEntry<StoredAlbum>>();
 const tracks = new Map<string, CacheEntry<DrawCoverTrack>>();
+const recordings = new Map<string, { kind: "album" | "track"; key: string; expires: number }>();
+
+function rememberRecording(id: string | null | undefined, kind: "album" | "track", key: string) {
+  if (id == null) return;
+  if (!validRecordingId(id)) throw new DrawCoverError(400, "Invalid recording ID.");
+  for (const [id, receipt] of recordings) {
+    if (receipt.expires <= Date.now()) recordings.delete(id);
+  }
+  const previous = recordings.get(id);
+  const entry = (kind === "album" ? albums : tracks).get(key);
+  if (previous && (previous.key !== key || previous.kind !== kind || !entry || entry.expires <= Date.now())) {
+    throw new DrawCoverError(409, "This recording ID cannot start another generation.");
+  }
+  if (recordings.size >= 128 && !previous) recordings.delete(recordings.keys().next().value!);
+  recordings.set(id, { kind, key, expires: Date.now() + SUCCESS_TTL });
+}
+
+export async function savedRecording(id: string | null): Promise<Response> {
+  if (!validRecordingId(id)) throw new DrawCoverError(400, "Invalid recording ID.");
+  let value: unknown;
+  let pending: boolean;
+  if (isHostedDemo()) {
+    const result = await hostedRecording(id);
+    value = result;
+    pending = result.pending === true;
+  } else {
+    const receipt = recordings.get(id);
+    const entry = receipt && (receipt.kind === "album" ? albums : tracks).get(receipt.key);
+    if (!receipt || receipt.expires <= Date.now() || !entry || entry.expires <= Date.now()) {
+      throw new DrawCoverError(404, "This recording is unavailable or expired. No new generation was started.");
+    }
+    if (entry.error) throw entry.error;
+    pending = !entry.settled;
+    value = pending ? { pending: true } : receipt.kind === "album" ? (entry.value as StoredAlbum).album : entry.value;
+  }
+  return Response.json(value, { status: pending ? 202 : 200, headers: { "Cache-Control": "no-store" } });
+}
 
 function prune<T>(cache: Map<string, CacheEntry<T>>) {
   for (const [key, entry] of cache) {
@@ -72,7 +111,8 @@ function cached<T>(
     (error: unknown) => {
       entry.settled = true;
       entry.expires = Date.now() + FAILURE_TTL;
-      throw safeError(error);
+      entry.error = safeError(error);
+      throw entry.error;
     },
   );
   cache.set(key, entry);
@@ -315,16 +355,18 @@ async function createAlbum(base64: string, config: ReturnType<typeof drawCoverCo
   };
 }
 
-export async function generateAlbum(input: unknown): Promise<Album> {
+export async function generateAlbum(input: unknown, recordingId?: string | null): Promise<Album> {
   const base64 = drawingBase64(input);
   const config = drawCoverConfig();
   providerKey(config.metadataProvider);
   const key = createHash("sha256").update(base64).update(JSON.stringify(config)).update(openRouterImageModel())
     .update(JSON.stringify([!!process.env.GEMINI_API_KEY?.trim(), !!process.env.OPENROUTER_API_KEY?.trim()])).digest("hex");
   const create = () => createAlbum(base64, config);
+  if (recordingId != null && !validRecordingId(recordingId)) throw new DrawCoverError(400, "Invalid recording ID.");
   if (isHostedDemo()) {
-    return (await hostedGeneration("album", `album:${key}`, create, safeError, (value) => value.album.id)).album;
+    return (await hostedGeneration("album", `album:${key}`, create, safeError, (value) => value.album.id, recordingId)).album;
   }
+  rememberRecording(recordingId, "album", key);
   return (await cached(albums, key, MAX_ALBUMS, 2, create)).album;
 }
 
@@ -419,22 +461,24 @@ async function createTrack(album: Album, index: number, provider: DrawCoverProvi
   }
 }
 
-export async function generateAlbumTrack(input: unknown): Promise<DrawCoverTrack> {
+export async function generateAlbumTrack(input: unknown, recordingId?: string | null): Promise<DrawCoverTrack> {
   const parsed = z.object({
     albumId: z.uuid(),
     trackIndex: z.number().int().min(0).max(7),
   }).strict().safeParse(input);
   if (!parsed.success) throw new DrawCoverError(400, "A valid album ID and track index (0–7) are required.");
+  if (recordingId != null && !validRecordingId(recordingId)) throw new DrawCoverError(400, "Invalid recording ID.");
   if (isHostedDemo()) {
     const stored = await hostedAlbum<StoredAlbum>(parsed.data.albumId);
     providerKey(stored.musicProvider);
     return hostedGeneration("track", `track:${stored.album.id}:${parsed.data.trackIndex}`,
-      () => createTrack(stored.album, parsed.data.trackIndex, stored.musicProvider), safeError);
+      () => createTrack(stored.album, parsed.data.trackIndex, stored.musicProvider), safeError, undefined, recordingId);
   }
   prune(albums);
   const stored = [...albums.values()].find((entry) => entry.value?.album.id === parsed.data.albumId)?.value;
   if (!stored) throw new DrawCoverError(404, "This album is unavailable or expired. Create the album again.");
   const { album, musicProvider } = stored;
   const { trackIndex } = parsed.data;
+  rememberRecording(recordingId, "track", `${album.id}:${trackIndex}`);
   return cached(tracks, `${album.id}:${trackIndex}`, MAX_TRACKS, 4, () => createTrack(album, trackIndex, musicProvider));
 }
