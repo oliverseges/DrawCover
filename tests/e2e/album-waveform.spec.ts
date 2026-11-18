@@ -1,6 +1,4 @@
-// @vitest-environment node
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { chromium, type Browser, type Page } from "@playwright/test";
+import { test, expect, chromium, type Browser, type Page } from "@playwright/test";
 import { build } from "vite";
 
 // Bundle an isolated React fixture in memory: no app server, network or providers.
@@ -78,7 +76,7 @@ let page: Page;
 let bundle: string;
 let errors: string[];
 
-beforeAll(async () => {
+test.beforeAll(async () => {
   const output = await build({
     configFile: false,
     logLevel: "silent",
@@ -98,9 +96,9 @@ beforeAll(async () => {
   if (!("output" in result)) throw new Error("Expected one browser bundle");
   bundle = result.output.map((chunk) => chunk.type === "chunk" ? chunk.code : "").join("\n");
   browser = await chromium.launch({ args: ["--autoplay-policy=no-user-gesture-required"] });
-}, 30000);
+});
 
-beforeEach(async () => {
+test.beforeEach(async () => {
   page = await browser.newPage({ hasTouch: true, viewport: { width: 390, height: 844 } });
   errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
@@ -153,11 +151,11 @@ beforeEach(async () => {
   await page.waitForSelector(".player-waveform i", { state: "attached", timeout: 3000 });
 });
 
-afterEach(async () => {
+test.afterEach(async () => {
   await page?.close();
   expect(errors ?? []).toEqual([]);
 });
-afterAll(async () => { await browser?.close(); });
+test.afterAll(async () => { await browser?.close(); });
 
 async function heights() {
   return page.locator(".player-waveform i").evaluateAll((bars) => bars.map((bar) => ({
@@ -187,8 +185,8 @@ async function seek(time: number) {
   }, time);
 }
 
-describe("AlbumWaveform real browser audio", () => {
-  it("renders 36 decorative full-height bars at rest and follows actual loud/silent/quiet samples and seeks", async () => {
+test.describe("AlbumWaveform real browser audio", () => {
+  test("renders 36 decorative full-height bars at rest and follows actual loud/silent/quiet samples and seeks", async () => {
     expect(await page.locator('.player-waveform[aria-hidden="true"] i').count()).toBe(36);
     expect(await page.locator(".player-waveform i").first().evaluate((bar) =>
       (bar as HTMLElement).style.getPropertyValue("--bar-height"))).toBe("100%");
@@ -206,7 +204,7 @@ describe("AlbumWaveform real browser audio", () => {
     await expect.poll(level).toBeGreaterThan(0.5);
   });
 
-  it("rests on pause/end, resumes and handles src changes without creating another media source", async () => {
+  test("rests on pause/end, resumes and handles src changes without creating another media source", async () => {
     const resting = await heights();
     await play();
     await expect.poll(level).toBeGreaterThan(0.5);
@@ -228,7 +226,7 @@ describe("AlbumWaveform real browser audio", () => {
     expect(await page.evaluate(() => window.probe.destinationConnections)).toBe(1);
   });
 
-  it("preserves native autoplay on rejected unlock and retries only on a real keyboard gesture", async () => {
+  test("preserves native autoplay on rejected unlock and retries only on a real keyboard gesture", async () => {
     const resting = await heights();
     await page.evaluate(() => { window.probe.blockUnlock = true; });
     await page.evaluate(async (src) => {
@@ -252,7 +250,7 @@ describe("AlbumWaveform real browser audio", () => {
     expect(await page.evaluate(() => window.probe.sources)).toBe(1);
   });
 
-  it("retries a pending unlock via genuine mobile touch and recovers an interrupted context", async () => {
+  test("retries a pending unlock via genuine mobile touch and recovers an interrupted context", async () => {
     const resting = await heights();
     await page.evaluate(() => { window.probe.pendingUnlock = true; });
     await play();
@@ -275,7 +273,7 @@ describe("AlbumWaveform real browser audio", () => {
     expect(await page.evaluate(() => window.probe.sources)).toBe(1);
   });
 
-  it("does not attach a late-unlocked source after cleanup", async () => {
+  test("does not attach a late-unlocked source after cleanup", async () => {
     await page.evaluate(() => { window.probe.pendingUnlock = true; });
     await play();
     await page.evaluate(() => window.fixture.unmount());
@@ -291,7 +289,7 @@ describe("AlbumWaveform real browser audio", () => {
     expect(await page.evaluate(() => window.probe.sources)).toBe(1);
   });
 
-  it("reuses the passthrough across StrictMode/remount and stops all work on cleanup", async () => {
+  test("reuses the passthrough across StrictMode/remount and stops all work on cleanup", async () => {
     await play();
     await expect.poll(level).toBeGreaterThan(0.5);
     await page.evaluate(() => window.fixture.unmount());
@@ -309,7 +307,7 @@ describe("AlbumWaveform real browser audio", () => {
     expect(await page.evaluate(() => window.probe.sources)).toBe(1);
   });
 
-  it("stays still without RAF for reduced motion and hidden tabs, recovering when visible", async () => {
+  test("stays still without RAF for reduced motion and hidden tabs, recovering when visible", async () => {
     const resting = await heights();
     await page.emulateMedia({ reducedMotion: "reduce" });
     await play();
@@ -333,7 +331,7 @@ describe("AlbumWaveform real browser audio", () => {
     await expect.poll(level).toBeGreaterThan(0.5);
   });
 
-  it("leaves native playback alone when Web Audio is unavailable", async () => {
+  test("leaves native playback alone when Web Audio is unavailable", async () => {
     await page.evaluate(() => {
       Object.defineProperty(window, "AudioContext", { configurable: true, value: undefined });
     });

@@ -6,7 +6,7 @@ declare global {
 
 function recording(frequency: number) {
   const rate = 8000;
-  const bytes = Buffer.alloc(44 + rate * 4 * 2);
+  const bytes = Buffer.alloc(44 + rate * 8 * 2);
   bytes.write("RIFF", 0);
   bytes.writeUInt32LE(bytes.length - 8, 4);
   bytes.write("WAVEfmt ", 8);
@@ -19,9 +19,9 @@ function recording(frequency: number) {
   bytes.writeUInt16LE(16, 34);
   bytes.write("data", 36);
   bytes.writeUInt32LE(bytes.length - 44, 40);
-  for (let sample = 0; sample < rate * 4; sample++) {
+  for (let sample = 0; sample < rate * 8; sample++) {
     const time = sample / rate;
-    const tone = time < 1 || time >= 2 && time < 3.6;
+    const tone = time < 2 || time >= 5 && time < 7.6;
     bytes.writeInt16LE(tone ? Math.round(Math.sin(time * frequency * Math.PI * 2) * 8192) : 0, 44 + sample * 2);
   }
   return `data:audio/wav;base64,${bytes.toString("base64")}`;
@@ -83,11 +83,11 @@ test("song bars follow actual loud and silent audio across seeking, pause and tr
   await expect.poll(level).toBeGreaterThan(.15);
   const loud = await level();
   await page.screenshot({ path: "output/playwright/song-waveform-LOUD-LOCAL-FIXTURE.png" });
-  await seek(1.3);
+  await seek(2.3);
   await expect.poll(level).toBeLessThanOrEqual(.12);
   const silent = await audio.evaluate(element => element instanceof HTMLMediaElement ? { time: element.currentTime, paused: element.paused } : null);
   expect(silent?.paused).toBe(false);
-  expect(silent!.time).toBeLessThan(2);
+  expect(silent!.time).toBeLessThan(5);
   await page.screenshot({ path: "output/playwright/song-waveform-SILENT-LOCAL-FIXTURE.png" });
   await seek(.15);
   await expect.poll(level).toBeGreaterThan(.15);
@@ -100,7 +100,7 @@ test("song bars follow actual loud and silent audio across seeking, pause and tr
   await expect(page.getByRole("button", { name: "Pause track" })).toBeVisible();
   await seek(.15);
   await expect.poll(level).toBeGreaterThan(.15);
-  await seek(3.95);
+  await seek(7.95);
   await expect(page.getByRole("button", { name: "Play current track" })).toBeVisible();
   await expect.poll(level).toBeLessThanOrEqual(.12);
   expect(await page.evaluate(() => window.__songSourceCreates)).toBe(1);
