@@ -27,7 +27,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     >
       <body className="min-h-full flex flex-col">
         <TooltipProvider>{children}</TooltipProvider>
-        <Toaster position="bottom-right" closeButton duration={8000} />
+        <Toaster position="bottom-right" closeButton duration={8000} mobileOffset={{ bottom: "calc(72px + env(safe-area-inset-bottom, 0px))", left: 16, right: 16 }} />
       </body>
     </html>
   );

@@ -93,6 +93,7 @@ WebGL uses a flat cover with a gentle crossfade instead of tilt and 3D rotation.
   Canvas UI particle reveal and restrained sparks.
 - **Controls that remain controls.** Keyboard flip, ordinary track buttons and native audio
   controls; no cursor-following overlays over the tracklist.
+  The floating GitHub button in the bottom-left opens this repository in a new tab.
 - **A studio with a sense of humor.** Recording messages rotate while artwork is pending,
   without repeated screen-reader announcements or pretend progress percentages.
 
@@ -463,6 +464,8 @@ for the strict request caps. Existing dependency advisories still need maintenan
   **Zustand** and **shadcn/ui** supply the app/UI foundation. Their dependency licenses
   continue to apply. See the [Three.js notice](docs/licenses/Three-MIT.txt).
 - **Lucide** supplies icons ([ISC](https://github.com/lucide-icons/lucide/blob/main/LICENSE));
+  the GitHub mark is from [Primer Octicons](https://github.com/primer/octicons)
+  ([MIT notice](docs/licenses/Octicons-MIT.txt)).
   **Geist / Geist Mono**, by Vercel and basement.studio, supply typography
   ([SIL Open Font License 1.1](docs/licenses/Geist-OFL.txt)).
 - **Google Gemini and Lyria**, used directly or via **OpenRouter**, generate the demo

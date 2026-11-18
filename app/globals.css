@@ -154,6 +154,10 @@
   .spin { animation: studio-spin 1.4s linear infinite; }
   @keyframes studio-spin { to { transform: rotate(360deg); } }
   .drawcover button:focus-visible, .drawcover input:focus-visible { outline: 2px solid currentColor; outline-offset: 4px; }
+  .github-link { position: fixed; z-index: 20; left: calc(12px + env(safe-area-inset-left, 0px)); bottom: calc(12px + env(safe-area-inset-bottom, 0px)); width: 44px; height: 44px; display: grid; place-items: center; border: 1px solid #24262130; border-radius: 50%; background: #faf9f6; color: #242621; box-shadow: 0 3px 14px #0002; }
+  .github-link:hover { background: #fff; border-color: #24262180; }
+  .github-link:focus-visible { outline: 2px solid #242621; outline-offset: 2px; box-shadow: 0 0 0 5px #faf9f6; }
+  .drawcover .album-footer { padding-left: max(4%, calc(76px + env(safe-area-inset-left, 0px))); }
   .has-album {
     --album-a: #253e38; --album-b: #a4b99e; --album-c: #efbd77;
     position: relative;
@@ -284,7 +288,7 @@
   @keyframes grain-reveal { from { transform: translate3d(35px, 50px, 0) scale(2); opacity: 0; } 20% { opacity: .9; } to { transform: translate3d(-15px, -35px, 0) scale(.5); opacity: 0; } }
   @media (min-width: 1500px) { .album-room { padding-top: 85px; } }
   @media (max-width: 760px) {
-    .drawing-room { padding: 24px 14px; gap: 20px; }
+    .drawing-room { padding: 24px 14px calc(88px + env(safe-area-inset-bottom, 0px)); gap: 20px; }
     .cover-toolbar { gap: 6px; }
     .tool-group { padding: 4px; gap: 1px; }
     .tool-group button { width: 31px; height: 33px; }
@@ -301,7 +305,7 @@
     .track-glass { height: 416px; }
     .ambient-orb { width: 110vw; filter: blur(65px); opacity: .1; }
     .record-player { padding: 16px; }
-    .album-footer { font-size: 7px; padding: 20px 7%; }
+    .album-footer { font-size: 7px; padding: 20px 7% calc(20px + env(safe-area-inset-bottom, 0px)); min-height: 76px; }
   }
   @media (min-width: 900px) and (min-height: 700px) {
     .has-album { height: 100dvh; min-height: 0; display: flex; flex-direction: column; }

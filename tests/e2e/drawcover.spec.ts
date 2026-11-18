@@ -59,6 +59,52 @@ async function setup(page: Page, blocked = false) {
   });
 }
 
+for (const viewport of [{ width: 1280, height: 720 }, { width: 390, height: 844 }]) {
+  test(`floating GitHub link stays accessible beside both screens and notifications at ${viewport.width}px`, async ({ page }) => {
+    await page.setViewportSize(viewport);
+    await setup(page);
+    await page.route("**/api/drawcover/track", route => route.request().postDataJSON().trackIndex === 0
+      ? route.fulfill({ json: { dataUrl: audio, model: "mock" } })
+      : route.fulfill({ status: 429, json: { reason: "cooldown", retryAfterSeconds: 900 } }));
+    await draw(page);
+    const link = page.getByRole("link", { name: "View DrawCover on GitHub (opens in a new tab)" });
+    await expect(link).toBeVisible();
+    await expect(link).toHaveAttribute("href", "https://github.com/oliverseges/DrawCover");
+    await expect(link).toHaveAttribute("target", "_blank");
+    await expect(link).toHaveAttribute("rel", "noopener noreferrer");
+    await expect(link).toHaveAttribute("title", /GitHub/);
+    await link.focus();
+    await expect(link).toBeFocused();
+    await expect(link).toHaveCSS("position", "fixed");
+    const original = (await link.boundingBox())!;
+    expect(original.width).toBeGreaterThanOrEqual(44);
+    expect(original.x).toBeGreaterThanOrEqual(12);
+    expect(original.y + original.height).toBeLessThanOrEqual(viewport.height - 12);
+    await page.getByRole("button", { name: "PRESS RECORD", exact: true }).click();
+    await expect(page.getByRole("heading", { name: album.title })).toBeVisible();
+    await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+    const after = (await link.boundingBox())!;
+    expect(after.x).toBe(original.x);
+    expect(after.y).toBe(original.y);
+    const overlapsFooter = await link.evaluate(element => {
+      const a = element.getBoundingClientRect();
+      return [...document.querySelectorAll(".album-footer span")].some(span => {
+        const b = span.getBoundingClientRect();
+        return a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+      });
+    });
+    expect(overlapsFooter).toBe(false);
+    await page.getByRole("button", { name: "Play track 2: Paper Horizon" }).click();
+    const notification = page.locator("[data-sonner-toast]");
+    await expect(notification).toBeVisible();
+    await expect.poll(async () => {
+      const a = (await link.boundingBox())!, b = (await notification.boundingBox())!;
+      return a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
+    }).toBe(false);
+    await expect(link).toBeVisible();
+  });
+}
+
 test("drawing becomes eight tracks, autoplays first, and lazily caches another", async ({ page }) => {
   await setup(page);
   const requests: number[] = [];
