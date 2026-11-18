@@ -21,6 +21,7 @@ const results = [];
 const browser = await chromium.launch();
 try {
   for (const cutPath of slow ? ["/api/drawcover/track"] : [null, "/api/drawcover", "/api/drawcover/track"]) {
+    const musicMode = cutPath === "/api/drawcover/track" ? "lyrics" : "instrumental";
     let calls = 0;
     let cut = false;
     const runtime = new Miniflare(convertV4MiniflareOptions({
@@ -48,8 +49,11 @@ try {
         calls++;
         const body = await request.json();
         await wait(300);
-        if (body.response_format) return Response.json({ choices: [{ message: { content: JSON.stringify(metadata) } }] });
+        if (body.response_format) return Response.json({ choices: [{ message: { content: JSON.stringify({
+          ...metadata, ...(musicMode === "lyrics" ? { genre: "pop" } : {}),
+        }) } }] });
         if (body.modalities?.includes("image")) return Response.json({ choices: [{ message: { images: [{ image_url: { url: image } }] } }] });
+        assert.ok(body.messages[0].content.includes(musicMode === "lyrics" ? "recognizable pop song" : "Instrumental only"));
         const encoder = new TextEncoder();
         return new Response(new ReadableStream({
           async start(controller) {
@@ -102,6 +106,7 @@ try {
       await page.mouse.down();
       await page.mouse.move(box.x + box.width * .7, box.y + box.height * .6, { steps: 10 });
       await page.mouse.up();
+      if (musicMode === "lyrics") await page.getByText("Lyrics", { exact: true }).click();
       await page.getByRole("button", { name: "PRESS RECORD", exact: true }).click();
       await page.waitForFunction(() => {
         const audio = document.querySelector("audio");
@@ -123,7 +128,7 @@ try {
       const usage = await (await context.request.get(`${base}/api/drawcover/status`)).json();
       assert.deepEqual(usage.daily.used, { album: 1, track: 1 });
       assert.equal(calls, 3);
-      results.push({ cutPath, elapsedMs: Date.now() - started, providerCalls: calls, usage: usage.daily.used, playback, network });
+      results.push({ cutPath, musicMode, elapsedMs: Date.now() - started, providerCalls: calls, usage: usage.daily.used, playback, network });
     } finally {
       await context.close();
       proxy.closeAllConnections();

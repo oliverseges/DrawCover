@@ -146,6 +146,17 @@
   .cover-canvas { width: 100%; transition: opacity .6s; }
   .cover-canvas > div > div { border: 1px solid #ecebe7; box-shadow: 0 8px 45px #24262105; border-radius: 2px; }
   .cover-canvas.is-making { opacity: .45; }
+  .record-controls { display: flex; flex-wrap: wrap; justify-content: center; align-items: flex-end; gap: 16px; }
+  .music-mode { border: 0; padding: 0; margin: 0; }
+  .music-mode legend { margin-bottom: 5px; font-size: 10px; letter-spacing: .1em; color: #60635a; }
+  .music-mode > div { display: flex; gap: 3px; padding: 3px; background: #eaeae4; border-radius: 100px; }
+  .music-mode label { position: relative; cursor: pointer; }
+  .music-mode input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+  .music-mode span { display: block; padding: 9px 13px; border-radius: 100px; font-size: 12px; }
+  .music-mode input:checked + span { background: #fff; box-shadow: 0 1px 4px #24262115; font-weight: 600; }
+  .music-mode input:focus-visible + span { outline: 2px solid #242621; outline-offset: 2px; }
+  .music-mode:disabled { opacity: .5; }
+  .music-mode:disabled label { cursor: default; }
   .go-button { background: #252722; color: white; border-radius: 100px; min-width: 190px; padding: 0 24px; height: 48px; white-space: nowrap; font-size: 13px; letter-spacing: .2em; font-weight: 600; cursor: pointer; transition: transform .2s, opacity .2s; }
   .go-button:hover:not(:disabled) { transform: translateY(-2px); }
   .go-button:disabled { opacity: .25; cursor: default; }

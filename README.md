@@ -97,7 +97,8 @@ WebGL uses a flat cover with a gentle crossfade instead of tilt and 3D rotation.
 - **A studio with a sense of humor.** Recording messages rotate while artwork is pending,
   without repeated screen-reader announcements or pretend progress percentages.
 
-The cover's **content note** says instrumental music was requested. It is not an official
+The cover's **content note** reflects the selected vocal mode: instrumental music or
+vocals with original lyrics were requested. It is not an official
 age rating, a certified clean-content guarantee, or a fabricated Parental Advisory warning.
 
 ## Quick start
@@ -131,7 +132,11 @@ leave unused keys and optional overrides empty. Then:
 npm run dev
 ```
 
-Open **http://localhost:3000**, draw something, and press **PRESS RECORD**.
+Open **http://localhost:3000**, draw something, choose **Instrumental** (the default) or
+**Lyrics**, and press **PRESS RECORD**. Lyrics mode chooses a familiar drawing-appropriate
+genre such as pop, rock, hip-hop, country or dance and requests a short sung verse/chorus
+with original lyrics, rather than an ambient instrumental. The choice stays with the
+album and every lazily generated track; returning to the drawing lets you choose again.
 If the port is taken, use `npm run dev -- -p 3001` and open http://localhost:3001.
 Restart the server after changing environment variables.
 
@@ -152,6 +157,25 @@ runtime and request-duration limits long enough for AI generation. The app does 
 authentication, per-user billing or durable storage; see [privacy and deployment](#privacy-and-deployment)
 before exposing a paid instance.
 </details>
+
+### Lyrics support
+
+The existing Lyria 3 Clip model supports vocals and generated lyrics:
+[Google's music guide](https://aistudio.google.com/docs/music-generation) documents the
+30-second clip, lyrics/structure output and text-prompt Interactions request.
+OpenRouter exposes the same [`google/lyria-3-clip-preview`](https://openrouter.ai/google/lyria-3-clip-preview)
+model through its [streaming text/audio format](https://openrouter.ai/docs/guides/overview/multimodal/audio).
+No additional provider, lyric-writing call or longer-song model is used.
+
+Lyrics mode is enabled only for the documented clip IDs: `lyria-3-clip-preview` with
+direct Gemini, or `google/lyria-3-clip-preview` with OpenRouter. An unverified local music
+model override fails before any paid album work, with the exact environment setting to
+fix; Instrumental remains available. Old requests and albums without a vocal-mode field
+remain instrumental and keep their existing cache keys. Lyrical albums use separate
+generation/recovery entries, never an instrumental cache hit for the same drawing.
+Vocals/lyrical fidelity depend on the provider; the content note records what was
+requested, not an audio audit or a clean/explicit certification. No paid vocal generation
+is used by the automated checks.
 
 ## Bring your own key
 

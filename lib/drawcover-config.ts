@@ -1,9 +1,19 @@
 import "server-only";
 import { z } from "zod";
+import type { MusicMode } from "@/lib/drawcover";
 
 export type DrawCoverProvider = "gemini" | "openrouter";
 
 export class DrawCoverConfigError extends Error {}
+
+export function validateMusicMode(mode: MusicMode, selected: DrawCoverProvider, model: string) {
+  if (mode !== "lyrics") return;
+  const supported = selected === "gemini" ? "lyria-3-clip-preview" : "google/lyria-3-clip-preview";
+  if (model !== supported) {
+    const setting = selected === "gemini" ? "DRAWCOVER_MUSIC_MODEL" : "OPENROUTER_MUSIC_MODEL";
+    throw new DrawCoverConfigError(`Lyrics mode requires the documented vocal-capable model ${supported}. Set ${setting}=${supported}, or choose Instrumental.`);
+  }
+}
 
 const providerSchema = z.enum(["auto", "gemini", "openrouter"]);
 

@@ -12,7 +12,7 @@ import { useAlbumPlayer } from "@/components/use-album-player";
 import { useShortcuts } from "@/components/toolbar/use-shortcuts";
 import { canvasController } from "@/lib/canvas/controller";
 import { stylizeDrawing } from "@/lib/cover-art";
-import type { Album } from "@/lib/drawcover";
+import type { Album, MusicMode } from "@/lib/drawcover";
 import { useDrawingStore, type Tool } from "@/stores/drawing-store";
 
 const tools: { id: Tool; label: string; icon: typeof Brush }[] = [
@@ -31,6 +31,7 @@ export function DrawCover() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [playing, setPlaying] = useState(false);
+  const [musicMode, setMusicMode] = useState<MusicMode>("instrumental");
   const { audioRef, tracks, active, loading: trackLoading, notice, select } = useAlbumPlayer(album);
 
   async function go() {
@@ -40,7 +41,7 @@ export function DrawCover() {
     setLoading(true);
     setError("");
     try {
-      const { response, body } = await generationRequest<Album>("/api/drawcover", { image });
+      const { response, body } = await generationRequest<Album>("/api/drawcover", { image, musicMode });
       if (showGenerationLimit(response, body)) return;
       if (!response.ok) throw new Error(body.message || "Your record couldn't be made. Please try again.");
       const result: Album = body;
@@ -80,7 +81,18 @@ export function DrawCover() {
           <div className={`cover-canvas ${loading ? "is-making" : ""}`} inert={loading}>
             <DrawingCanvas layout="cover" />
           </div>
-          <button className="go-button" type="button" onClick={() => void go()} disabled={drawing.isEmpty || loading}>PRESS RECORD</button>
+          <div className="record-controls">
+            <fieldset className="music-mode" disabled={loading}>
+              <legend>Song vocals</legend>
+              <div>{(["instrumental", "lyrics"] as const).map(mode => (
+                <label key={mode}>
+                  <input type="radio" name="music-mode" value={mode} checked={musicMode === mode} onChange={() => setMusicMode(mode)} />
+                  <span>{mode === "instrumental" ? "Instrumental" : "Lyrics"}</span>
+                </label>
+              ))}</div>
+            </fieldset>
+            <button className="go-button" type="button" onClick={() => void go()} disabled={drawing.isEmpty || loading}>PRESS RECORD</button>
+          </div>
           {loading && <RecordingStatus />}
           {error && <p className="studio-error" role="alert">{error}</p>}
         </section>

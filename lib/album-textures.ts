@@ -1,4 +1,4 @@
-import type { Album } from "@/lib/drawcover";
+import { albumContentNote, type Album, type MusicMode } from "@/lib/drawcover";
 
 function wrap(ctx: CanvasRenderingContext2D, text: string, width: number) {
   const lines: string[] = [];
@@ -21,7 +21,8 @@ function oneLine(ctx: CanvasRenderingContext2D, text: string, width: number) {
   return `${shortened}...`;
 }
 
-function contentNote(ctx: CanvasRenderingContext2D, x: number, y: number, width: number) {
+function contentNote(ctx: CanvasRenderingContext2D, x: number, y: number, width: number, mode?: MusicMode) {
+  const note = albumContentNote(mode);
   ctx.fillStyle = "#eeeae0";
   ctx.fillRect(x, y, width, width * .44);
   ctx.fillStyle = "#13171b";
@@ -32,9 +33,9 @@ function contentNote(ctx: CanvasRenderingContext2D, x: number, y: number, width:
   ctx.fillText("CONTENT NOTE", x + width / 2, y + width * .095);
   ctx.fillStyle = "#13171b";
   ctx.font = `900 ${width * .095}px sans-serif`;
-  ctx.fillText("INSTRUMENTAL", x + width / 2, y + width * .29);
+  ctx.fillText(note.title, x + width / 2, y + width * .29);
   ctx.font = `600 ${width * .055}px sans-serif`;
-  ctx.fillText("NO LYRICS REQUESTED", x + width / 2, y + width * .39);
+  ctx.fillText(note.detail, x + width / 2, y + width * .39);
   ctx.textAlign = "left";
 }
 
@@ -71,7 +72,7 @@ export async function albumFaces(album: Album): Promise<[HTMLCanvasElement, HTML
   ctx.font = "500 13px monospace";
   ctx.fillText("AN ORIGINAL RECORD / DRAWN BY YOU", 80, 942);
   ctx.fillText("DC / 001", 840, 90);
-  contentNote(ctx, 744, 874, 200);
+  contentNote(ctx, 744, 874, 200, album.musicMode);
 
   rear.fillStyle = album.palette[0];
   rear.fillRect(0, 0, 1024, 1024);
@@ -108,7 +109,7 @@ export async function albumFaces(album: Album): Promise<[HTMLCanvasElement, HTML
   rear.fillText("DRAWCOVER", 80, 907);
   rear.font = "400 10px monospace";
   rear.fillText("\u00a9 & \u2117 2026 DRAWCOVER RECORDS / FICTIONAL RELEASE", 80, 938);
-  contentNote(rear, 565, 879, 170);
+  contentNote(rear, 565, 879, 170, album.musicMode);
   rear.fillStyle = "#eeeae0";
   for (let index = 0, x = 800; index < 35; index++) {
     const width = 1 + (index * 7 % 4);

@@ -59,6 +59,36 @@ async function setup(page: Page, blocked = false) {
   });
 }
 
+for (const width of [1280, 390]) {
+  test(`vocal choice defaults to Instrumental and retains Lyrics on the album at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 844 });
+    await setup(page);
+    await page.route("**/api/drawcover", route => {
+      expect(route.request().postDataJSON().musicMode).toBe("lyrics");
+      return route.fulfill({ json: { ...album, musicMode: "lyrics", genre: "pop" } });
+    });
+    await page.route("**/api/drawcover/track", route => {
+      expect(route.request().postDataJSON()).toEqual({ albumId: album.id, trackIndex: 0 });
+      return route.fulfill({ json: { dataUrl: audio, model: "mock" } });
+    });
+    await draw(page);
+    const instrumental = page.getByRole("radio", { name: "Instrumental", exact: true });
+    const lyrics = page.getByRole("radio", { name: "Lyrics", exact: true });
+    await expect(instrumental).toBeChecked();
+    await instrumental.focus();
+    await page.keyboard.press("ArrowRight");
+    await expect(lyrics).toBeChecked();
+    await expect(lyrics).toBeFocused();
+    await expect(page.getByRole("group", { name: "Song vocals" })).toBeInViewport();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await page.getByRole("button", { name: "PRESS RECORD", exact: true }).click();
+    await expect(page.locator(".jacket-front .content-note")).toContainText("WITH LYRICS");
+    await expect(page.locator(".jacket-back .content-note")).toContainText("VOCALS REQUESTED");
+    await expect(page.locator(".content-note").first()).toHaveAttribute("aria-label", /not an official age certification or clean-content guarantee/i);
+    await expect.poll(() => page.evaluate(() => (window as unknown as { __plays: number }).__plays)).toBe(1);
+  });
+}
+
 for (const viewport of [{ width: 1280, height: 720 }, { width: 390, height: 844 }]) {
   test(`floating GitHub link stays accessible beside both screens and notifications at ${viewport.width}px`, async ({ page }) => {
     await page.setViewportSize(viewport);

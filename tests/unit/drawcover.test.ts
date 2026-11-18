@@ -82,13 +82,81 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-async function album() {
-  const response = await albumPost(request({ image: IMAGE }));
+async function album(musicMode?: "instrumental" | "lyrics", recordingId?: string) {
+  const input = request({ image: IMAGE, ...(musicMode ? { musicMode } : {}) });
+  if (recordingId) input.headers.set("X-DrawCover-Recording", recordingId);
+  const response = await albumPost(input);
   expect(response.status).toBe(200);
   return response.json();
 }
 
 describe("DrawCover album endpoint", () => {
+  it("uses one cache entry for omitted/default Instrumental mode", async () => {
+    const original = await album();
+    expect(original.musicMode).toBe("instrumental");
+    expect((await album("instrumental")).id).toBe(original.id);
+    expect(recognizeDrawing).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(["gemini", "openrouter"] as const)("keeps %s lyrical albums, lazy tracks and recovery separate from the same instrumental drawing", async provider => {
+    vi.stubEnv("DRAWCOVER_MUSIC_PROVIDER", provider);
+    generateContent.mockImplementation(({ model, config }) => Promise.resolve(model.includes("image")
+      ? { candidates: [{ content: { parts: [{ inlineData: { mimeType: "image/png", data: PNG } }] } }] }
+      : { text: JSON.stringify({ ...metadata(), ...(config.responseJsonSchema.required.includes("genre") ? { genre: "pop" } : {}) }) }));
+    fetcher.mockImplementation(() => Promise.resolve(provider === "gemini"
+      ? Response.json({ steps: [{ type: "model_output", content: [{ type: "audio", mime_type: "audio/mpeg", data: MP3 }] }] })
+      : sse()));
+    const firstId = crypto.randomUUID();
+    const secondId = crypto.randomUUID();
+    const instrumental = await album("instrumental", firstId);
+    const lyrical = await album("lyrics", secondId);
+    expect(lyrical).toMatchObject({ musicMode: "lyrics", genre: "pop" });
+    expect(lyrical.id).not.toBe(instrumental.id);
+    expect((await album("lyrics")).id).toBe(lyrical.id);
+    const metadataCall = generateContent.mock.calls.filter(([body]) => !body.model.includes("image"))[1][0];
+    expect(metadataCall.contents[0].parts[0].text).toContain("familiar mainstream genre");
+    expect(metadataCall.config.responseJsonSchema.required).toContain("genre");
+    for (const result of [instrumental, lyrical, lyrical]) {
+      expect((await trackPost(request({ albumId: result.id, trackIndex: 0 }, "/track"))).status).toBe(200);
+    }
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    const prompts = fetcher.mock.calls.map(([, options]) => {
+      const body = JSON.parse(options.body);
+      return provider === "gemini" ? body.input : body.messages[0].content;
+    });
+    expect(prompts[0]).toContain("Instrumental only");
+    expect(prompts[1]).toContain("recognizable pop song");
+    expect(prompts[1]).toContain("original coherent English lyrics");
+    expect(prompts[1]).toContain("[Verse]");
+    expect(prompts[1]).toContain("[Chorus]");
+    expect(prompts[1]).not.toContain("Instrumental only");
+    const { GET } = await import("@/app/api/drawcover/recording/route");
+    expect(await (await GET(new Request(`http://localhost/api/drawcover/recording?id=${firstId}`))).json()).toMatchObject({ id: instrumental.id, musicMode: "instrumental" });
+    expect(await (await GET(new Request(`http://localhost/api/drawcover/recording?id=${secondId}`))).json()).toMatchObject({ id: lyrical.id, musicMode: "lyrics" });
+    const conflicting = request({ image: IMAGE, musicMode: "lyrics" });
+    conflicting.headers.set("X-DrawCover-Recording", firstId);
+    expect((await albumPost(conflicting)).status).toBe(409);
+    expect((await trackPost(request({ albumId: lyrical.id, trackIndex: 0, musicMode: "instrumental" }, "/track"))).status).toBe(400);
+    expect(fetcher).toHaveBeenCalledTimes(2);
+  });
+
+  it.each(["gemini", "openrouter"] as const)("rejects an unverified %s lyrics model before any paid work", async provider => {
+    vi.stubEnv("DRAWCOVER_MUSIC_PROVIDER", provider);
+    vi.stubEnv(provider === "gemini" ? "DRAWCOVER_MUSIC_MODEL" : "OPENROUTER_MUSIC_MODEL", "unverified-model");
+    const response = await albumPost(request({ image: IMAGE, musicMode: "lyrics" }));
+    expect(response.status).toBe(503);
+    expect((await response.json()).message).toContain("or choose Instrumental");
+    expect(generateContent).not.toHaveBeenCalled();
+    expect(recognizeDrawing).not.toHaveBeenCalled();
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
+  it.each(["ambient", null, 1])("rejects invalid vocal mode %s without provider calls", async musicMode => {
+    expect((await albumPost(request({ image: IMAGE, musicMode }))).status).toBe(400);
+    expect(generateContent).not.toHaveBeenCalled();
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
   it("serves local album and music receipts without invoking providers again", async () => {
     const { GET } = await import("@/app/api/drawcover/recording/route");
     const albumId = crypto.randomUUID();
@@ -112,9 +180,9 @@ describe("DrawCover album endpoint", () => {
   it("uses shared hosted albums/tracks after module reloads, with OpenRouter-only calls", async () => {
     vi.stubEnv("DRAWCOVER_HOSTED", "true");
     const records = new Map<string, unknown>();
-    let stored: unknown;
+    let stored: { album: import("@/lib/drawcover").Album; musicProvider: string } | undefined;
     const stateFetch = vi.fn(async (url: string, init?: RequestInit) => {
-      if (url.includes("/album?")) return Response.json(stored);
+      if (url.includes("/album?")) return Response.json(stored && { ...stored, album: { ...stored.album, musicMode: undefined } });
       const body = JSON.parse(String(init?.body));
       if (url.endsWith("/claim")) {
         return Response.json(records.has(body.key) ? { cached: records.get(body.key) } : { lease: "reservation" });
@@ -145,6 +213,7 @@ describe("DrawCover album endpoint", () => {
     expect(await second.json()).toEqual(await first.json());
     expect(fetcher).toHaveBeenCalledTimes(3);
     expect(fetcher.mock.calls.every(([url]) => url === "https://openrouter.ai/api/v1/chat/completions")).toBe(true);
+    expect(JSON.parse(fetcher.mock.calls[2][1].body).messages[0].content).toContain("Instrumental only");
     expect(recognizeDrawing).not.toHaveBeenCalled();
     expect(generateContent).not.toHaveBeenCalled();
   });
@@ -185,6 +254,7 @@ describe("DrawCover album endpoint", () => {
     expect(result).toEqual({
       id: expect.any(String),
       ...metadata(),
+      musicMode: "instrumental",
       cover: { source: "ai", dataUrl: IMAGE },
       models: {
         metadata: "gemini-3.5-flash-lite",

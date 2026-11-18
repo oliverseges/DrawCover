@@ -3,7 +3,7 @@
 import { lazy, Suspense, useState, useSyncExternalStore } from "react";
 import { ArrowUpRight, RotateCw } from "lucide-react";
 import { CoverReveal } from "@/components/album-effects";
-import type { Album } from "@/lib/drawcover";
+import { albumContentNote, type Album, type MusicMode } from "@/lib/drawcover";
 
 const PhysicalAlbum = lazy(() => import("@/components/physical-album"));
 function subscribeMotion(onChange: () => void) {
@@ -13,8 +13,9 @@ function subscribeMotion(onChange: () => void) {
 }
 const allowsMotion = () => !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-function ContentNote() {
-  return <span className="content-note" aria-label="Content note: instrumental music, no lyrics requested. Not an official age certification."><span>CONTENT NOTE</span><strong>INSTRUMENTAL</strong><small>NO LYRICS REQUESTED</small></span>;
+function ContentNote({ mode }: { mode?: MusicMode }) {
+  const note = albumContentNote(mode);
+  return <span className="content-note" aria-label={note.label}><span>CONTENT NOTE</span><strong>{note.title}</strong><small>{note.detail}</small></span>;
 }
 
 export function AlbumJacket({ album }: { album: Album }) {
@@ -44,7 +45,7 @@ export function AlbumJacket({ album }: { album: Album }) {
                     <span className="cover-front-title">{album.title}</span>
                     <span className="cover-front-edition">AN ORIGINAL RECORD / DRAWN BY YOU</span>
                   </span>
-                  <ContentNote />
+                  <ContentNote mode={album.musicMode} />
                   </div>
               </CoverReveal>
               <span className="art-sticker" aria-hidden="true">DC / 001</span>
@@ -62,7 +63,7 @@ export function AlbumJacket({ album }: { album: Album }) {
                   </li>
                 ))}
               </ol>
-              <div className="back-cover-imprint"><span>DRAWCOVER<br />IMAGINATION, PRESSED INTO SOUND.<br />{"\u00a9 & \u2117 2026 DRAWCOVER RECORDS"}<br />FICTIONAL RELEASE</span><ContentNote /><span className="cover-barcode" aria-hidden="true" /></div>
+              <div className="back-cover-imprint"><span>DRAWCOVER<br />IMAGINATION, PRESSED INTO SOUND.<br />{"\u00a9 & \u2117 2026 DRAWCOVER RECORDS"}<br />FICTIONAL RELEASE</span><ContentNote mode={album.musicMode} /><span className="cover-barcode" aria-hidden="true" /></div>
             </div>
             </div>
           </div>
